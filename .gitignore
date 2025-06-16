@@ -194,4 +194,8 @@ cython_debug/
 .cursorindexingignore
 
 # Data files
+data/data_sources.json
 data/processed_chunks.json
+
+# Chroma DB
+chroma_db/

@@ -1,10 +1,13 @@
 from langchain.text_splitter import CharacterTextSplitter
+from typing import List
+import pandas as pd
 
-def create_text_chunks(df_processed, selected_columns):
+def create_text_chunks(df_processed: pd.DataFrame, selected_columns: List[str]) -> List[str]:
     text_chunks = []
     
     for idx, row in df_processed.iterrows():
         row_text = []
+        
         for col in selected_columns:
             value = str(row[col]).strip()
             if value and value != 'nan' and value != 'ไม่มีข้อมูล':
@@ -16,7 +19,9 @@ def create_text_chunks(df_processed, selected_columns):
     
     return text_chunks
 
-def chunk_texts_intelligently(text_chunks, chunk_size=1000, chunk_overlap=200):
+def chunk_texts_intelligently(text_chunks: List[str], 
+                            chunk_size: int = 1000, 
+                            chunk_overlap: int = 200) -> List[str]:
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=chunk_size,
