@@ -1,17 +1,45 @@
-import streamlit as st
+import streamlit as st 
 import pandas as pd
-import numpy as np
 from dotenv import load_dotenv
-from data_processing import clean_and_process_data
-from chunking import create_text_chunks, chunk_texts_intelligently
-from auth import check_credentials, password_expired, validate_password_change
 from datetime import datetime
+import json
+import os
+from typing import List, Dict, Any
 
-def init_session_state():
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'password_changed_date' not in st.session_state:
-        st.session_state.password_changed_date = datetime.now()
+from auth.credentials import check_credentials, password_expired, validate_password_change
+from logic.data_processing import clean_and_process_data
+from logic.chunking import create_text_chunks, chunk_texts_intelligently
+from utils.session import init_session_state
+from core.embedding import create_vector_store
+from core.qa_chain import get_qa_chain
+
+def save_data_sources(data_sources: Dict[str, Any]):
+    os.makedirs("data", exist_ok=True)
+    with open("data/data_sources.json", "w", encoding="utf-8") as f:
+        json.dump(data_sources, f, ensure_ascii=False, indent=2, default=str)
+
+def load_data_sources() -> Dict[str, Any]:
+    try:
+        if os.path.exists("data/data_sources.json"):
+            with open("data/data_sources.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        st.error(f"Error loading data sources: {e}")
+    return {}
+
+def save_processed_chunks(chunks: List[str]):
+    os.makedirs("data", exist_ok=True)
+    with open("data/processed_chunks.json", "w", encoding="utf-8") as f:
+        json.dump(chunks, f, ensure_ascii=False, indent=2)
+
+def load_processed_chunks() -> List[str]:
+    try:
+        if os.path.exists("data/processed_chunks.json"):
+            with open("data/processed_chunks.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        st.error(f"Error loading processed chunks: {e}")
+    return []
 
 def main():
     load_dotenv()
@@ -20,6 +48,19 @@ def main():
         page_icon="icon/ptt.ico",
     )
     init_session_state()
+
+    if "data_sources" not in st.session_state:
+        st.session_state.data_sources = load_data_sources()
+    
+    if "all_chunks" not in st.session_state:
+        st.session_state.all_chunks = load_processed_chunks()
+        
+    if st.session_state.all_chunks and 'vectordb' not in st.session_state:
+        try:
+            st.session_state.vectordb = create_vector_store(st.session_state.all_chunks)
+            st.session_state.qa_chain = get_qa_chain(st.session_state.vectordb)
+        except Exception as e:
+            print(f"Error initializing vector store: {e}")
 
     if not st.session_state.authenticated:
         st.title("PTT HR Chatbot Login")
@@ -58,18 +99,20 @@ def main():
 
     st.header("PTT HR Chatbot")
     st.markdown("""
-    This is a simple chatbot that can answer questions about your Excel data.
-    Upload Excel files and ask questions about their contents.
+    This chatbot allows you to ask questions about your uploaded Excel data.
+    Upload Excel files and type in a question to get answers.
     """)
 
     user_question = st.text_input("Enter your question about the Excel data:")
 
     with st.sidebar:
-        st.header("Your Documents")
+        st.markdown('<div class="header">📁 Upload Excel Files</div>', unsafe_allow_html=True)
+
         uploaded_files = st.file_uploader(
-            "Upload Excel Files", 
-            type=["xlsx", "xls"], 
-            accept_multiple_files=True
+            "Choose Excel files",
+            type=["xlsx", "xls"],
+            accept_multiple_files=True,
+            help="Upload Excel files containing feedback data"
         )
 
         selected_columns = [
@@ -82,71 +125,165 @@ def main():
         ]
 
         valid_files = []
-        invalid_files = []
-
         if uploaded_files:
-            for uploaded_file in uploaded_files:
+            for file in uploaded_files:
                 try:
-                    df = pd.read_excel(
-                        uploaded_file, 
-                        engine='openpyxl' if uploaded_file.name.endswith('.xlsx') else 'xlrd'
-                    )
-                    st.subheader(f"Preview of Raw Data: {uploaded_file.name}")
-                    st.dataframe(df.head(10))
-
-                    missing_cols = [col for col in selected_columns if col not in df.columns]
-                    if not missing_cols:
-                        valid_files.append((uploaded_file.name, df))
-                        st.success(f"✅ {uploaded_file.name} has all required columns")
+                    df = pd.read_excel(file, engine='openpyxl' if file.name.endswith('.xlsx') else 'xlrd')
+                    missing = [col for col in selected_columns if col not in df.columns]
+                    if missing:
+                        st.error(f"❌ `{file.name}` is missing columns: {', '.join(missing)}")
                     else:
-                        st.error(f"❌ {uploaded_file.name} is missing columns: {', '.join(missing_cols)}")
-                        invalid_files.append(uploaded_file.name)
+                        valid_files.append((file.name, df))
+                        st.success(f"✅ `{file.name}` is ready ({len(df)} rows)")
+                        st.dataframe(df.head(5))
                 except Exception as e:
-                    st.error(f"Cannot read {uploaded_file.name}: {str(e)}")
-                    invalid_files.append(uploaded_file.name)
+                    st.error(f"❌ Cannot read file `{file.name}`: {str(e)}")
 
-        can_process = len(valid_files) > 0
+        if valid_files and st.button("⚙️ Process Data"):
+            new_chunks = []
 
-        if st.button("Process", disabled=not can_process):
-            all_text_chunks = []
+            with st.spinner("Processing all files..."):
+                for name, df in valid_files:
+                    processed = clean_and_process_data(df, selected_columns)
+                    chunks = create_text_chunks(processed, selected_columns)
+                    new_chunks.extend(chunks)
 
-            with st.spinner("Processing Excel files..."):
-                for filename, df in valid_files:
-                    try:
-                        processed_data = clean_and_process_data(df, selected_columns)
+                    st.session_state.data_sources[name] = {
+                        "upload_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "rows": len(processed)
+                    }
 
-                        st.subheader(f"📄 Processed Data Preview: {filename}")
-                        st.dataframe(processed_data)
-                        st.write(f"Rows after processing: {len(processed_data)}")
+                st.session_state.all_chunks.extend(new_chunks)
+                
+                st.session_state.all_chunks = chunk_texts_intelligently(st.session_state.all_chunks)
+                
+                save_data_sources(st.session_state.data_sources)
+                save_processed_chunks(st.session_state.all_chunks)
+                
+                st.session_state.vectordb = create_vector_store(st.session_state.all_chunks)
+                st.session_state.qa_chain = get_qa_chain(st.session_state.vectordb)
+                
+                st.success(f"📦 Successfully created {len(st.session_state.all_chunks)} chunks")
 
-                        text_chunks = create_text_chunks(processed_data, selected_columns)
-                        all_text_chunks.extend(text_chunks)
+        st.subheader("📋 Uploaded Files")
 
-                        st.success(f"✅ Processed {len(text_chunks)} records from {filename}")
+        if st.session_state.data_sources:
+            for filename, info in st.session_state.data_sources.items():
+                with st.expander(f"📄 {filename}"):
+                    st.write(f"📅 Uploaded on: {info.get('upload_date', '-')}")
+                    st.write(f"📊 Rows: {info.get('rows', 0):,}")
+                    if st.button(f"🗑️ Delete {filename}", key=f"del_{filename}"):
+                        del st.session_state.data_sources[filename]
+                        save_data_sources(st.session_state.data_sources)
+                        
+                        if not st.session_state.data_sources:
+                            st.session_state.all_chunks = []
+                            save_processed_chunks([])
+                            if 'vectordb' in st.session_state:
+                                del st.session_state.vectordb
+                            if 'qa_chain' in st.session_state:
+                                del st.session_state.qa_chain
+                        
+                        st.success(f"✅ Deleted {filename}")
+                        st.rerun()
+        else:
+            st.info("No files uploaded yet.")
 
-                    except Exception as e:
-                        st.error(f"Error processing {filename}: {str(e)}")
-
-            if all_text_chunks:
-                final_chunks = chunk_texts_intelligently(all_text_chunks)
-
-                st.success(f"✅ Successfully created {len(final_chunks)} chunks from {len(all_text_chunks)} records.")
-
-                with st.expander("View Sample Chunks"):
-                    for i, chunk in enumerate(final_chunks[:5]):
-                        st.subheader(f"Chunk {i+1}")
-                        st.text(chunk)
-                        st.write(f"Length: {len(chunk)} characters")
-                        st.write("---")
-
-                with st.expander("Processing Statistics"):
-                    chunk_lengths = [len(chunk) for chunk in final_chunks]
-                    st.write(f"Total chunks: {len(final_chunks)}")
-                    st.write(f"Average chunk length: {int(np.mean(chunk_lengths))} characters")
-                    st.write(f"Min chunk length: {min(chunk_lengths)} characters")
-                    st.write(f"Max chunk length: {max(chunk_lengths)} characters")
+    if st.session_state.qa_chain and user_question:
+        with st.spinner("Searching for the answer..."):
+            try:
+                answer = st.session_state.qa_chain.run(user_question)
+                st.markdown("### Your Answer:")
+                st.write(answer)
+                
+                if "chat_history" not in st.session_state:
+                    st.session_state.chat_history = []
+                    
+                st.session_state.chat_history.append({
+                    "role": "user", 
+                    "content": user_question,
+                    "timestamp": datetime.now().strftime("%H:%M:%S")
+                })
+                st.session_state.chat_history.append({
+                    "role": "assistant", 
+                    "content": answer,
+                    "timestamp": datetime.now().strftime("%H:%M:%S")
+                })
+                
+            except Exception as e:
+                st.error(f"Error answering question: {e}")
+    
+    if "chat_history" in st.session_state and st.session_state.chat_history:
+        st.subheader("💭 Chat History")
+        
+        for chat in reversed(st.session_state.chat_history[-10:]):
+            if chat["role"] == "user":
+                with st.chat_message("user"):
+                    st.markdown(f"**You** ({chat.get('timestamp', '')}):")
+                    st.markdown(chat['content'])
             else:
-                st.warning("No valid data found to process.")
+                with st.chat_message("assistant"):
+                    st.markdown(f"**Bot** ({chat.get('timestamp', '')}):")
+                    st.markdown(chat['content'])
+        
+        if st.button("🗑️ Clear Chat History"):
+            st.session_state.chat_history = []
+            st.rerun()
+
+def process_files(valid_files: List, selected_columns: List[str]):
+    with st.spinner("⚙️ Processing files..."):
+        new_chunks = []
+        
+        for filename, df in valid_files:
+            try:
+                processed_data = clean_and_process_data(df, selected_columns)
+                
+                st.session_state.data_sources[filename] = {
+                    'upload_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'rows': len(processed_data),
+                    'columns': selected_columns
+                }
+                
+                text_chunks = create_text_chunks(processed_data, selected_columns)
+                new_chunks.extend(text_chunks)
+                
+                st.success(f"✅ Processed {filename} successfully ({len(text_chunks):,} chunks)")
+                
+            except Exception as e:
+                st.error(f"❌ Error processing {filename}: {str(e)}")
+        
+        if new_chunks:
+            st.session_state.all_chunks.extend(new_chunks)
+            
+            st.session_state.all_chunks = chunk_texts_intelligently(st.session_state.all_chunks)
+            
+            save_data_sources(st.session_state.data_sources)
+            save_processed_chunks(st.session_state.all_chunks)
+            
+            st.session_state.vectordb = create_vector_store(st.session_state.all_chunks)
+            st.session_state.qa_chain = get_qa_chain(st.session_state.vectordb)
+            
+            st.success(f"🎉 Data added successfully! Total {len(st.session_state.all_chunks):,} chunks")
+            st.rerun()
+
+def rebuild_chunks():
+    if not st.session_state.data_sources:
+        st.session_state.all_chunks = []
+        if 'vectordb' in st.session_state:
+            del st.session_state.vectordb
+        if 'qa_chain' in st.session_state:
+            del st.session_state.qa_chain
+        save_processed_chunks([])
+        return
+    
+    st.session_state.all_chunks = []
+    if 'vectordb' in st.session_state:
+        del st.session_state.vectordb
+    if 'qa_chain' in st.session_state:
+        del st.session_state.qa_chain
+    save_processed_chunks([])
+    
+    st.warning("⚠️ Please upload files again to recreate the data")
 
 if __name__ == "__main__":
     main()
