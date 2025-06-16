@@ -4,15 +4,15 @@ from datetime import datetime
 import os
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Tuple, Any
 
 from auth.credentials import check_credentials, password_expired, validate_password_change
 from logic.data_processing import clean_and_process_data
 from logic.chunking import create_text_chunks, chunk_texts_intelligently
 from core.embedding import create_vector_store, update_vector_store
 from core.qa_chain import get_qa_chain
-from utils.session import init_session_state, reset_session_state, update_data_sources
-from utils.feedback import log_feedback, get_feedback_stats
+from utils.session import init_session_state, reset_session_state, update_data_sources, load_data_sources, save_data_sources
+from utils.feedback import log_feedback
 from utils.evaluation import evaluate_qa_chain, calculate_metrics
 
 SELECTED_COLUMNS = [
@@ -23,21 +23,11 @@ SELECTED_COLUMNS = [
     "แนวทางการดำเนินการ",
     "รายละเอียด Status"
 ]
+
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
-def save_data_sources(data_sources: Dict[str, Any]):
-    with open(DATA_DIR / "data_sources.json", "w", encoding="utf-8") as f:
-        json.dump(data_sources, f, ensure_ascii=False, indent=2, default=str)
-
-def load_data_sources() -> Dict[str, Any]:
-    try:
-        if (DATA_DIR / "data_sources.json").exists():
-            with open(DATA_DIR / "data_sources.json", "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception as e:
-        st.error(f"Error loading data sources: {e}")
-    return {}
+MAX_UPLOAD_SIZE_MB = 20
 
 def save_processed_chunks(chunks: List[str]):
     with open(DATA_DIR / "processed_chunks.json", "w", encoding="utf-8") as f:
@@ -57,6 +47,13 @@ def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, A
     file_info = {}
     
     for file in uploaded_files:
+        file.seek(0, os.SEEK_END)
+        size_mb = file.tell() / (1024 * 1024)
+        file.seek(0)
+        if size_mb > MAX_UPLOAD_SIZE_MB:
+            st.error(f"❌ {file.name} File size is larger than {MAX_UPLOAD_SIZE_MB} MB")
+            continue
+        
         try:
             df = pd.read_excel(file)
             processed_data = clean_and_process_data(df, SELECTED_COLUMNS)
@@ -66,7 +63,8 @@ def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, A
             file_info[file.name] = {
                 "upload_date": datetime.now().isoformat(),
                 "rows": len(processed_data),
-                "chunks": len(chunks)
+                "chunks": len(chunks),
+                "filename": file.name
             }
             
             st.success(f"✅ Processed {file.name} ({len(chunks)} chunks)")
@@ -78,13 +76,43 @@ def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, A
     
     return new_chunks, file_info
 
+def reload_all_chunks_from_sources() -> List[str]:
+    all_chunks = []
+    for filename in st.session_state.data_sources.keys():
+        filepath = DATA_DIR / filename
+        if not filepath.exists():
+            st.warning(f"File {filename} not found in data folder")
+            continue
+        try:
+            df = pd.read_excel(filepath)
+            processed_data = clean_and_process_data(df, SELECTED_COLUMNS)
+            chunks = create_text_chunks(processed_data, SELECTED_COLUMNS)
+            all_chunks.extend(chunks)
+        except Exception as e:
+            st.error(f"Unable to load file {filename}: {str(e)}")
+    return all_chunks
+
+def refresh_vector_store(chunks: List[str]):
+    if not chunks:
+        st.session_state.vectordb = None
+        st.session_state.qa_chain = None
+        return
+    try:
+        if st.session_state.vectordb:
+            st.session_state.vectordb = update_vector_store(chunks, st.session_state.vectordb)
+        else:
+            st.session_state.vectordb = create_vector_store(chunks)
+        st.session_state.qa_chain = get_qa_chain(st.session_state.vectordb)
+    except Exception as e:
+        st.error(f"Failed to create QA chain: {str(e)}")
+
 def display_chat_history():
     if "chat_history" not in st.session_state or not st.session_state.chat_history:
         return
     
     st.subheader("💬 Chat History")
     
-    for i, chat in enumerate(reversed(st.session_state.chat_history[-10:])):
+    for i, chat in enumerate(reversed(st.session_state.chat_history[-15:])):
         with st.container():
             if chat["role"] == "user":
                 st.markdown(f"**You**: {chat['content']}")
@@ -94,18 +122,12 @@ def display_chat_history():
                     st.markdown(f"**Assistant**: {chat['content']}")
                 with cols[1]:
                     if st.button("👍", key=f"like_{i}"):
-                        log_feedback(
-                            st.session_state.chat_history[-2]['content'],
-                            chat['content'],
-                            "like"
-                        )
+                        user_msg = st.session_state.chat_history[-2]['content'] if len(st.session_state.chat_history) >= 2 else ""
+                        log_feedback(user_msg, chat['content'], "like")
                         st.success("Thanks for your feedback!")
                     if st.button("👎", key=f"dislike_{i}"):
-                        log_feedback(
-                            st.session_state.chat_history[-2]['content'],
-                            chat['content'],
-                            "dislike"
-                        )
+                        user_msg = st.session_state.chat_history[-2]['content'] if len(st.session_state.chat_history) >= 2 else ""
+                        log_feedback(user_msg, chat['content'], "dislike")
                         st.error("We'll improve this answer!")
 
 def main():
@@ -116,10 +138,16 @@ def main():
     )
     init_session_state()
     
-    if "data_sources" not in st.session_state:
+    if not st.session_state.data_sources:
         st.session_state.data_sources = load_data_sources()
-    if "all_chunks" not in st.session_state:
+    if not st.session_state.all_chunks:
         st.session_state.all_chunks = load_processed_chunks()
+    
+    if st.session_state.password_changed_date and isinstance(st.session_state.password_changed_date, str):
+        try:
+            st.session_state.password_changed_date = datetime.fromisoformat(st.session_state.password_changed_date)
+        except Exception:
+            st.session_state.password_changed_date = None
     
     if not st.session_state.authenticated:
         show_login_page()
@@ -147,48 +175,29 @@ def main():
                 if new_chunks:
                     st.session_state.all_chunks.extend(new_chunks)
                     update_data_sources(file_info)
+                    st.session_state.data_sources.update(file_info)
                     save_data_sources(st.session_state.data_sources)
                     save_processed_chunks(st.session_state.all_chunks)
                     
-                    try:
-                        if st.session_state.vectordb:
-                            st.session_state.vectordb = update_vector_store(
-                                new_chunks,
-                                st.session_state.vectordb
-                            )
-                        else:
-                            st.session_state.vectordb = create_vector_store(st.session_state.all_chunks)
-                        
-                        st.session_state.qa_chain = get_qa_chain(st.session_state.vectordb)
-                        st.success("✅ Data processing complete!")
-                    except Exception as e:
-                        st.error(f"Failed to create QA chain: {str(e)}")
+                    refresh_vector_store(st.session_state.all_chunks)
+                    st.success("✅ Data processing complete!")
         
         st.subheader("📋 Uploaded Files")
         if st.session_state.data_sources:
             for filename, info in st.session_state.data_sources.items():
                 with st.expander(f"📄 {filename}"):
-                    st.write(f"📅 Uploaded: {info.get('upload_date', 'N/A')}")
+                    st.write(f"📅 Uploaded: {info.get('upload_date', '-')}")
                     st.write(f"📊 Rows: {info.get('rows', 0):,}")
                     st.write(f"🧩 Chunks: {info.get('chunks', 0):,}")
                     
-                    if st.button(f"Delete {filename}", key=f"del_{filename}"):
+                    if st.button(f"🗑️ Delete {filename}", key=f"del_{filename}"):
                         del st.session_state.data_sources[filename]
                         save_data_sources(st.session_state.data_sources)
                         
-                        st.session_state.all_chunks = []
-                        for name, info in st.session_state.data_sources.items():
-                            st.session_state.all_chunks.extend(info.get("chunks", []))
-                        
+                        st.session_state.all_chunks = reload_all_chunks_from_sources()
                         save_processed_chunks(st.session_state.all_chunks)
                         
-                        if st.session_state.all_chunks:
-                            st.session_state.vectordb = create_vector_store(st.session_state.all_chunks)
-                            st.session_state.qa_chain = get_qa_chain(st.session_state.vectordb)
-                        else:
-                            st.session_state.vectordb = None
-                            st.session_state.qa_chain = None
-                        
+                        refresh_vector_store(st.session_state.all_chunks)
                         st.rerun()
         else:
             st.info("No files uploaded yet")
@@ -204,6 +213,12 @@ def main():
                 
                 if st.checkbox("Show Detailed Results"):
                     st.dataframe(eval_results)
+        
+        st.markdown("---")
+        if st.button("🔒 Logout"):
+            reset_session_state()
+            st.session_state.authenticated = False
+            st.rerun()
     
     user_question = st.chat_input("Ask about the feedback data...")
     
@@ -235,20 +250,35 @@ def main():
     display_chat_history()
 
 def show_login_page():
-    st.title("PTT HR Chatbot Login")
-    
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        
-        if st.form_submit_button("Login"):
+    st.markdown(
+        """
+        <div style="text-align:center; margin-top: 50px;">
+            <h2 style="margin-top: 20px;">🏢 Welcome to PTT HR Chatbot</h2>
+            <p>Please log in with your credentials to continue.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    with st.form("login_form", clear_on_submit=False):
+        st.subheader("🔐 Please Login")
+        username = st.text_input("👤 Username", placeholder="Enter your username", key="username_input")
+        password = st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input")
+
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            submitted = st.form_submit_button("🚀 Login", use_container_width=True)
+
+        if submitted:
             if check_credentials(username, password):
                 st.session_state.authenticated = True
                 st.session_state.password_changed_date = datetime.now()
+                save_data_sources(st.session_state.data_sources)
                 st.success("Login successful!")
                 st.rerun()
             else:
-                st.error("Invalid credentials")
+                st.error("❌ Invalid username or password.")
+
 
 def show_password_change_page():
     st.warning("Your password has expired. Please change your password.")
@@ -262,6 +292,7 @@ def show_password_change_page():
             valid, message = validate_password_change(old_password, new_password, confirm_password)
             if valid:
                 st.session_state.password_changed_date = datetime.now()
+                save_data_sources(st.session_state.data_sources)
                 st.success(message)
                 st.rerun()
             else:
