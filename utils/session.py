@@ -7,16 +7,17 @@ from pathlib import Path
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
+DATA_SOURCES_PATH = DATA_DIR / "data_sources.json"
+
 def load_data_sources() -> Dict[str, Any]:
     try:
-        filepath = DATA_DIR / "data_sources.json"
-        if filepath.exists():
-            with open(filepath, "r", encoding="utf-8") as f:
+        if DATA_SOURCES_PATH.exists():
+            with open(DATA_SOURCES_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                
-                if "password_changed_date" in data and isinstance(data["password_changed_date"], str):
-                    data["password_changed_date"] = datetime.fromisoformat(data["password_changed_date"])
-                
+
+                for key, val in data.items():
+                    if isinstance(val, dict) and "uploaded_at" in val and isinstance(val["uploaded_at"], str):
+                        val["uploaded_at"] = datetime.fromisoformat(val["uploaded_at"])
                 return data
     except Exception as e:
         st.error(f"Error loading data sources: {e}")
@@ -27,23 +28,22 @@ def save_data_sources(data: Dict[str, Any]):
         if isinstance(o, datetime):
             return o.isoformat()
         return str(o)
-    
-    with open(DATA_DIR / "data_sources.json", "w", encoding="utf-8") as f:
+
+    with open(DATA_SOURCES_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=default_converter)
 
 def init_session_state():
     defaults = {
-        'authenticated': False,
-        'password_changed_date': None,
-        'vectordb': None,
+        'vectordb': None, 
         'qa_chain': None,
-        'data_sources': load_data_sources(),
         'all_chunks': [],
         'chat_history': [],
+        'data_sources': load_data_sources(),
+        'current_file': None,
         'evaluation_results': None,
         'feedback_stats': None
     }
-    
+
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
@@ -51,5 +51,6 @@ def init_session_state():
 def update_data_sources(file_info: Dict[str, Any]):
     if 'data_sources' not in st.session_state or not st.session_state.data_sources:
         st.session_state.data_sources = {}
-    
+
     st.session_state.data_sources.update(file_info)
+    save_data_sources(st.session_state.data_sources)

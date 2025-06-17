@@ -195,6 +195,3 @@ cython_debug/
 
 # Data files
 data/
-
-# Chroma DB
-chroma_db/

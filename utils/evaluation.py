@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Any
 from langchain.chains.base import Chain
 
 TEST_QUESTIONS = {
@@ -90,41 +90,55 @@ TEST_QUESTIONS = {
 - จัดอบรมหลักสูตร Mini LDP ตามสัดส่วน Demand-Supply"""
     }
 }
-def evaluate_qa_chain(qa_chain: Chain, test_cases: Dict[str, str] = None) -> pd.DataFrame:
+def evaluate_qa_chain(qa_chain: Chain, test_cases: Dict[str, Dict[str, str]] = None) -> pd.DataFrame:
     test_cases = test_cases or TEST_QUESTIONS
     results = []
-    
-    for question, expected in test_cases.items():
+
+    for key, qa in test_cases.items():
+        question = qa["question"]
+        expected = qa["answer"]
         try:
             response = qa_chain({"query": question})
-            answer = response["result"]
-            source = [doc.metadata.get("source", "") for doc in response["source_documents"]]
-            
+            actual_answer = response.get("result", "")
+            source_docs = response.get("source_documents", [])
+
+            sources = [doc.metadata.get("source", "") for doc in source_docs if hasattr(doc, "metadata")]
+            sources_str = ", ".join(filter(None, sources))
+
+            match = expected.lower() in actual_answer.lower()
+
             results.append({
                 "question": question,
                 "expected": expected,
-                "actual": answer,
-                "source": ", ".join(source),
-                "match": expected.lower() in answer.lower()
+                "actual": actual_answer,
+                "source": sources_str,
+                "match": match,
             })
         except Exception as e:
-            print(f"Error evaluating question '{question}': {str(e)}")
             results.append({
                 "question": question,
                 "expected": expected,
-                "actual": str(e),
+                "actual": f"Error: {str(e)}",
                 "source": "",
-                "match": False
+                "match": False,
             })
-    
+
     return pd.DataFrame(results)
 
-def calculate_metrics(eval_results: pd.DataFrame) -> Dict[str, float]:
-    if len(eval_results) == 0:
-        return {}
-    
+def calculate_metrics(eval_results: pd.DataFrame) -> Dict[str, Any]:
+    if eval_results.empty:
+        return {
+            "accuracy": 0.0,
+            "total_questions": 0,
+            "correct_answers": 0,
+        }
+
+    accuracy = eval_results["match"].mean()
+    total = len(eval_results)
+    correct = eval_results["match"].sum()
+
     return {
-        "accuracy": eval_results["match"].mean(),
-        "total_questions": len(eval_results),
-        "correct_answers": eval_results["match"].sum()
+        "accuracy": accuracy,
+        "total_questions": total,
+        "correct_answers": correct,
     }

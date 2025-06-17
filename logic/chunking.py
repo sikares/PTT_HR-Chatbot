@@ -7,10 +7,9 @@ def create_text_chunks(df_processed: pd.DataFrame, selected_columns: List[str]) 
 
     for idx, row in df_processed.iterrows():
         row_text = []
-
         for col in selected_columns:
-            value = str(row[col]).strip()
-            if value and value != 'nan' and value != 'ไม่มีข้อมูล':
+            value = str(row.get(col, "")).strip()
+            if value and value.lower() != 'nan' and value != 'ไม่มีข้อมูล' and not pd.isna(value):
                 row_text.append(f"{col}: {value}")
 
         if row_text:
@@ -19,9 +18,11 @@ def create_text_chunks(df_processed: pd.DataFrame, selected_columns: List[str]) 
 
     return text_chunks
 
-def chunk_texts_intelligently(text_chunks: List[str],
-                            chunk_size: int = 1000,
-                            chunk_overlap: int = 200) -> List[str]:
+def chunk_texts_intelligently(
+    text_chunks: List[str],
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200
+) -> List[str]:
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
