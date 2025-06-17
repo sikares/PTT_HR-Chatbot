@@ -48,16 +48,6 @@ def init_session_state():
         if key not in st.session_state:
             st.session_state[key] = value
 
-def reset_session_state():
-    auth_state = {
-        'authenticated': st.session_state.get('authenticated', False),
-        'password_changed_date': st.session_state.get('password_changed_date')
-    }
-    
-    st.session_state.clear()
-    st.session_state.update(auth_state)
-    init_session_state()
-
 def update_data_sources(file_info: Dict[str, Any]):
     if 'data_sources' not in st.session_state or not st.session_state.data_sources:
         st.session_state.data_sources = {}

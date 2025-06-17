@@ -6,12 +6,11 @@ import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
 
-from auth.credentials import check_credentials, password_expired, validate_password_change
 from logic.data_processing import clean_and_process_data
 from logic.chunking import create_text_chunks, chunk_texts_intelligently
 from core.embedding import create_vector_store, update_vector_store
 from core.qa_chain import get_qa_chain
-from utils.session import init_session_state, reset_session_state, update_data_sources, load_data_sources, save_data_sources
+from utils.session import init_session_state, update_data_sources, load_data_sources, save_data_sources
 from utils.feedback import log_feedback
 from utils.evaluation import evaluate_qa_chain, calculate_metrics
 
@@ -143,20 +142,6 @@ def main():
     if not st.session_state.all_chunks:
         st.session_state.all_chunks = load_processed_chunks()
     
-    if st.session_state.password_changed_date and isinstance(st.session_state.password_changed_date, str):
-        try:
-            st.session_state.password_changed_date = datetime.fromisoformat(st.session_state.password_changed_date)
-        except Exception:
-            st.session_state.password_changed_date = None
-    
-    if not st.session_state.authenticated:
-        show_login_page()
-        return
-    
-    if password_expired(st.session_state.password_changed_date):
-        show_password_change_page()
-        return
-    
     st.title("PTT HR Feedback Chatbot")
     st.markdown("Analyze employee feedback data with AI")
     
@@ -213,12 +198,6 @@ def main():
                 
                 if st.checkbox("Show Detailed Results"):
                     st.dataframe(eval_results)
-        
-        st.markdown("---")
-        if st.button("🔒 Logout"):
-            reset_session_state()
-            st.session_state.authenticated = False
-            st.rerun()
     
     user_question = st.chat_input("Ask about the feedback data...")
     
@@ -248,55 +227,6 @@ def main():
                 st.error(f"Error answering question: {str(e)}")
     
     display_chat_history()
-
-def show_login_page():
-    st.markdown(
-        """
-        <div style="text-align:center; margin-top: 50px;">
-            <h2 style="margin-top: 20px;">🏢 Welcome to PTT HR Chatbot</h2>
-            <p>Please log in with your credentials to continue.</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    with st.form("login_form", clear_on_submit=False):
-        st.subheader("🔐 Please Login")
-        username = st.text_input("👤 Username", placeholder="Enter your username", key="username_input")
-        password = st.text_input("🔒 Password", type="password", placeholder="Enter your password", key="password_input")
-
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            submitted = st.form_submit_button("🚀 Login", use_container_width=True)
-
-        if submitted:
-            if check_credentials(username, password):
-                st.session_state.authenticated = True
-                st.session_state.password_changed_date = datetime.now()
-                save_data_sources(st.session_state.data_sources)
-                st.success("Login successful!")
-                st.rerun()
-            else:
-                st.error("❌ Invalid username or password.")
-
-
-def show_password_change_page():
-    st.warning("Your password has expired. Please change your password.")
-    
-    with st.form("password_change_form"):
-        old_password = st.text_input("Current Password", type="password")
-        new_password = st.text_input("New Password", type="password")
-        confirm_password = st.text_input("Confirm New Password", type="password")
-        
-        if st.form_submit_button("Change Password"):
-            valid, message = validate_password_change(old_password, new_password, confirm_password)
-            if valid:
-                st.session_state.password_changed_date = datetime.now()
-                save_data_sources(st.session_state.data_sources)
-                st.success(message)
-                st.rerun()
-            else:
-                st.error(message)
 
 if __name__ == "__main__":
     main()

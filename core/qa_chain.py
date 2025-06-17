@@ -1,9 +1,9 @@
-from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from typing import Optional
-from langchain_community.vectorstores import Chroma
+from langchain.vectorstores import Chroma
+from langchain_community.llms import Ollama
 import os
+from typing import Optional
 
 DEFAULT_PROMPT_TEMPLATE = """
 คุณเป็นผู้ช่วยฝ่ายทรัพยากรบุคคลของ PTT โปรดใช้ข้อมูลต่อไปนี้เพื่อตอบคำถามเกี่ยวกับ feedback ของพนักงาน
@@ -16,26 +16,22 @@ DEFAULT_PROMPT_TEMPLATE = """
 คำตอบที่เป็นภาษาไทยที่ชัดเจนและเป็นมิตร:
 """
 
-def get_qa_chain(vectordb: Chroma, model_name: str = "gpt-4o-mini") -> Optional[RetrievalQA]:
-    if not os.getenv("OPENAI_API_KEY"):
-        raise ValueError("OpenAI API key is not set in environment variables")
-    
+def get_qa_chain(vectordb: Chroma, model_name: str = "llama3.3") -> Optional[RetrievalQA]:
     if vectordb is None or len(vectordb.get()['documents']) == 0:
         raise ValueError("Vector database is empty or not initialized")
 
     try:
-        llm = ChatOpenAI(
-            model_name=model_name,
+        llm = Ollama(
+            model=model_name,
             temperature=0.2,
             max_tokens=1000,
-            openai_api_key=os.getenv("OPENAI_API_KEY")
         )
-        
+
         prompt = PromptTemplate(
             template=DEFAULT_PROMPT_TEMPLATE,
             input_variables=["context", "question"]
         )
-        
+
         return RetrievalQA.from_chain_type(
             llm=llm,
             chain_type="stuff",
