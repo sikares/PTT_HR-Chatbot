@@ -11,7 +11,7 @@ from logic.qa_chain import get_qa_chain
 from utils.session import init_session_state, update_data_sources, load_data_sources, save_data_sources
 from utils.evaluation import evaluate_qa_chain, calculate_metrics, TEST_QUESTIONS
 from core.vector_store import QdrantVectorStore
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 SELECTED_COLUMNS = [
     "ที่มาของ Feedback",
