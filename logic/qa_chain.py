@@ -3,9 +3,9 @@ from langchain.prompts import PromptTemplate
 from langchain_ollama import OllamaLLM
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.schema import BaseRetriever
-from typing import Optional, List, Dict, Any
 from core.vector_store import QdrantVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
 DEFAULT_PROMPT_TEMPLATE = """
@@ -23,7 +23,19 @@ DEFAULT_PROMPT_TEMPLATE = """
 }}
 """
 
-def get_qa_chain(vectordb: QdrantVectorStore, model_name: str = "supachai/llama-3-typhoon-v1.5") -> Optional[RetrievalQA]:
+DEFAULT_MODEL_NAME = "supachai/llama-3-typhoon-v1.5"
+DEFAULT_TEMPERATURE = 0.3
+DEFAULT_TOP_K = 5
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL_KWARGS = {"device": "cpu"}
+
+def get_embedding_model() -> HuggingFaceEmbeddings:
+    return HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        model_kwargs=EMBEDDING_MODEL_KWARGS
+    )
+
+def get_qa_chain(vectordb: QdrantVectorStore, model_name: str = DEFAULT_MODEL_NAME) -> Optional[RetrievalQA]:
     if vectordb is None:
         raise ValueError("Vector database is empty or not initialized")
 
@@ -42,18 +54,15 @@ def get_qa_chain(vectordb: QdrantVectorStore, model_name: str = "supachai/llama-
 
         llm = OllamaLLM(
             model=model_name,
-            temperature=0.2,
+            temperature=DEFAULT_TEMPERATURE,
         )
 
         class CustomRetriever(BaseRetriever, BaseModel):
             vector_store: QdrantVectorStore
 
             def get_relevant_documents(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-                k = kwargs.get("k", 5)
-                query_embedding = HuggingFaceEmbeddings(
-                    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                    model_kwargs={"device": "cpu"}
-                ).embed_query(query)
+                k = kwargs.get("k", DEFAULT_TOP_K)
+                query_embedding = get_embedding_model().embed_query(query)
 
                 results = self.vector_store.search_vectors(query_embedding, top_k=k)
                 return [r.payload for r in results]

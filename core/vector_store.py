@@ -3,10 +3,14 @@ from qdrant_client.http import models
 from typing import List, Optional, Dict, Any
 import uuid
 
+QDRANT_HOST = "localhost"
+QDRANT_PORT = 6333
+DEFAULT_COLLECTION_NAME = "ptt_hr_feedback"
 VECTOR_SIZE = 384
+DEFAULT_TOP_K = 5
 
 class QdrantVectorStore:
-    def __init__(self, host: str = "localhost", port: int = 6333, collection_name: str = "ptt_hr_feedback"):
+    def __init__(self, host: str = QDRANT_HOST, port: int = QDRANT_PORT, collection_name: str = DEFAULT_COLLECTION_NAME):
         self.collection_name = collection_name
         self.client = QdrantClient(host=host, port=port)
         self._create_collection_if_not_exists()
@@ -29,7 +33,6 @@ class QdrantVectorStore:
         ids: Optional[List[str]] = None,
         payloads: Optional[List[Dict[str, Any]]] = None
     ):
-
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in vectors]
 
@@ -47,10 +50,9 @@ class QdrantVectorStore:
     def search_vectors(
         self,
         query_vector: List[float],
-        top_k: int = 5,
+        top_k: int = DEFAULT_TOP_K,
         filter: Optional[models.Filter] = None
     ) -> List[models.ScoredPoint]:
-
         results = self.client.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
@@ -98,7 +100,7 @@ class QdrantVectorStore:
             with_payload=False,
             with_vectors=False
         )
-        return [str(point.id) for point in scroll_result[0]]
+        return [point.id for point in scroll_result[0]]
 
     def get_collection_info(self) -> models.CollectionInfo:
         return self.client.get_collection(collection_name=self.collection_name)

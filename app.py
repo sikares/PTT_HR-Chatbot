@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Tuple
 
 from logic.data_processing import clean_and_process_data
 from logic.chunking import create_text_chunks, chunk_texts_intelligently
-from logic.embedding import create_vector_store, update_vector_store
+from logic.embedding import create_vector_store, update_vector_store, get_embedding_model
 from logic.qa_chain import get_qa_chain
 from utils.session import init_session_state, update_data_sources, load_data_sources, save_data_sources
 from utils.evaluation import evaluate_qa_chain, calculate_metrics, TEST_QUESTIONS
@@ -124,20 +124,10 @@ def refresh_vector_store(chunks: List[str]):
         return
         
     try:
-        # Initialize our custom vector store
         vector_store = QdrantVectorStore()
-        
-        # Get embeddings
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-            model_kwargs={"device": "cpu"}
-        )
-        
-        # Generate embeddings and insert into vector store
+        embeddings = get_embedding_model()
         vectors = embeddings.embed_documents(chunks)
         vector_store.insert_vectors(vectors, payloads=[{"text": chunk} for chunk in chunks])
-        
-        # Update session state
         st.session_state.vectordb = vector_store
         st.session_state.qa_chain = get_qa_chain(vector_store)
         

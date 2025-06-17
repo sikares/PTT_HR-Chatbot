@@ -98,7 +98,7 @@ def evaluate_qa_chain(qa_chain: Chain, test_cases: Dict[str, Dict[str, str]] = N
         question = qa["question"]
         expected = qa["answer"]
         try:
-            response = qa_chain({"query": question})
+            response = qa_chain.invoke({"query": question})
             actual_answer = response.get("result", "")
             source_docs = response.get("source_documents", [])
 
