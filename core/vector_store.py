@@ -25,7 +25,18 @@ class QdrantVectorStore:
                     distance=models.Distance.COSINE
                 )
             )
-            print(f"Created collection '{self.collection_name}' in Qdrant.")
+
+    def search_vectors(
+        self,
+        query_vector: List[float],
+        top_k: int = DEFAULT_TOP_K
+    ) -> List[models.ScoredPoint]:
+        results = self.client.search(
+            collection_name=self.collection_name,
+            query_vector=query_vector,
+            limit=top_k
+        )
+        return results
 
     def insert_vectors(
         self,
@@ -35,7 +46,6 @@ class QdrantVectorStore:
     ):
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in vectors]
-
         if payloads is None:
             payloads = [{} for _ in vectors]
 
@@ -45,62 +55,3 @@ class QdrantVectorStore:
         ]
 
         self.client.upsert(collection_name=self.collection_name, points=points)
-        print(f"Inserted {len(points)} vectors into '{self.collection_name}'.")
-
-    def search_vectors(
-        self,
-        query_vector: List[float],
-        top_k: int = DEFAULT_TOP_K,
-        filter: Optional[models.Filter] = None
-    ) -> List[models.ScoredPoint]:
-        results = self.client.search(
-            collection_name=self.collection_name,
-            query_vector=query_vector,
-            limit=top_k,
-            filter=filter
-        )
-        return results
-
-    def delete_vectors(self, ids: List[str]):
-        self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=models.PointIdsList(points=ids)
-        )
-        print(f"Deleted {len(ids)} vectors from '{self.collection_name}'.")
-
-    def delete_all_vectors(self):
-        self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=models.FilterSelector(
-                filter=models.Filter(must=[])
-            )
-        )
-        print(f"Deleted all vectors from '{self.collection_name}'.")
-
-    def delete_by_filename(self, filename: str):
-        self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=models.FilterSelector(
-                filter=models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="filename",
-                            match=models.MatchValue(value=filename)
-                        )
-                    ]
-                )
-            )
-        )
-        print(f"Deleted all vectors with filename: {filename}")
-
-    def list_all_ids(self) -> List[str]:
-        scroll_result = self.client.scroll(
-            collection_name=self.collection_name,
-            limit=10000,
-            with_payload=False,
-            with_vectors=False
-        )
-        return [point.id for point in scroll_result[0]]
-
-    def get_collection_info(self) -> models.CollectionInfo:
-        return self.client.get_collection(collection_name=self.collection_name)

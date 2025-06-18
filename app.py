@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
+import shelve
 
 from logic.data_processing import clean_and_process_data
 from logic.chunking import create_text_chunks, chunk_texts_intelligently
@@ -11,14 +12,19 @@ from logic.qa_chain import get_qa_chain
 from utils.session import init_session_state, update_data_sources, load_data_sources, save_data_sources
 from utils.evaluation import evaluate_qa_chain, calculate_metrics, TEST_QUESTIONS
 from core.vector_store import QdrantVectorStore
-from langchain_huggingface import HuggingFaceEmbeddings
+
+USER_AVATAR = "👤"
+BOT_AVATAR = "🤖"
 
 SELECTED_COLUMNS = [
+    "DD.MM.YYYY",
     "ที่มาของ Feedback",
     "BU",
+    "บคญ./บทญ.",
     "ประเภท Feedback",
     "รายละเอียด Feedback",
     "แนวทางการดำเนินการ",
+    "สถานะการแจ้ง Process Owner ",
     "รายละเอียด Status"
 ]
 
@@ -26,6 +32,21 @@ DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
 MAX_UPLOAD_SIZE_MB = 20
+
+def load_chat_history():
+    try:
+        with shelve.open("ptt_chat_history") as db:
+            return db.get("messages", [])
+    except Exception as e:
+        st.error(f"Error loading chat history: {e}")
+        return []
+
+def save_chat_history(messages):
+    try:
+        with shelve.open("ptt_chat_history") as db:
+            db["messages"] = messages
+    except Exception as e:
+        st.error(f"Error saving chat history: {e}")
 
 def save_processed_chunks(chunks: List[str]):
     import json
@@ -138,21 +159,6 @@ def refresh_vector_store(chunks: List[str]):
         st.session_state.vectordb = None
         st.session_state.qa_chain = None
 
-def display_chat_history():
-    if "chat_history" not in st.session_state or not st.session_state.chat_history:
-        return
-
-    st.subheader("💬 Chat History")
-
-    for chat in reversed(st.session_state.chat_history[-15:]):
-        with st.container():
-            if chat["role"] == "user":
-                st.markdown(f"**You**: {chat['content']}")
-            else:
-                cols = st.columns([0.9, 0.1])
-                with cols[0]:
-                    st.markdown(f"**Assistant**: {chat['content']}")
-
 def display_evaluation_results(eval_df: pd.DataFrame):
     st.subheader("📝 Evaluation Results")
     st.dataframe(eval_df[["question", "expected", "actual", "match"]])
@@ -166,14 +172,18 @@ def main():
         page_icon="icon/ptt.ico",
         layout="wide"
     )
+    
     init_session_state()
+
+    if "messages" not in st.session_state:
+        st.session_state.messages = load_chat_history()
 
     if not st.session_state.data_sources:
         st.session_state.data_sources = load_data_sources()
     if not st.session_state.all_chunks:
         st.session_state.all_chunks = load_processed_chunks()
 
-    st.title("PTT HR Feedback Chatbot")
+    st.title("PTT HR Feedback Chatbot 🤖")
     st.markdown("Analyze employee feedback data with AI")
 
     with st.sidebar:
@@ -226,6 +236,21 @@ def main():
             st.info("No files uploaded yet")
 
         st.markdown("---")
+        
+        st.header("💬 Chat Controls")
+        if st.button("🗑️ Delete Chat History"):
+            st.session_state.messages = []
+            save_chat_history([])
+            st.success("Chat history deleted!")
+            st.rerun()
+        
+        if st.session_state.messages:
+            user_messages = len([m for m in st.session_state.messages if m["role"] == "user"])
+            bot_messages = len([m for m in st.session_state.messages if m["role"] == "assistant"])
+            st.info(f"💬 Messages: {user_messages} questions, {bot_messages} responses")
+
+        st.markdown("---")
+        
         st.header("⚙️ Evaluation")
         if st.button("Run Evaluation on Test Questions"):
             if st.session_state.qa_chain:
@@ -239,33 +264,42 @@ def main():
         if "eval_results" in st.session_state:
             display_evaluation_results(st.session_state.eval_results)
 
-    user_question = st.chat_input("Ask about the feedback data...")
+    for message in st.session_state.messages:
+        avatar = USER_AVATAR if message["role"] == "user" else BOT_AVATAR
+        with st.chat_message(message["role"], avatar=avatar):
+            st.markdown(message["content"])
 
-    if user_question and st.session_state.qa_chain:
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
+    if prompt := st.chat_input("Ask about the feedback data..."):
+        if not st.session_state.qa_chain:
+            st.warning("Please upload and process some data files first to enable the chatbot.")
+            st.stop()
+            
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user", avatar=USER_AVATAR):
+            st.markdown(prompt)
 
-        st.session_state.chat_history.append({
-            "role": "user",
-            "content": user_question,
-            "timestamp": datetime.now().isoformat()
-        })
-
-        with st.spinner("Searching for answers..."):
+        with st.chat_message("assistant", avatar=BOT_AVATAR):
+            message_placeholder = st.empty()
+            full_response = ""
+            
             try:
-                response = st.session_state.qa_chain({"query": user_question})
-                answer = response["result"]
-
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": answer,
-                    "timestamp": datetime.now().isoformat()
-                })
-                st.rerun()
+                message_placeholder.markdown("Searching for answers... 🔍")
+                
+                response = st.session_state.qa_chain.invoke({"query": prompt})
+                full_response = response["result"]
+                
+                message_placeholder.markdown(full_response)
+                
             except Exception as e:
-                st.error(f"Error answering question: {str(e)}")
+                full_response = f"Sorry, I encountered an error while processing your question: {str(e)}"
+                message_placeholder.markdown(full_response)
 
-    display_chat_history()
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        
+        save_chat_history(st.session_state.messages)
+
+    if not st.session_state.data_sources:
+        st.info("👆 Please upload Excel files using the sidebar to start chatting with your data!")
 
 if __name__ == "__main__":
     main()
