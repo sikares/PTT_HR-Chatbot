@@ -17,7 +17,6 @@ USER_AVATAR = "👤"
 BOT_AVATAR = "🤖"
 
 SELECTED_COLUMNS = [
-    "DD.MM.YYYY",
     "ที่มาของ Feedback",
     "BU",
     "บคญ./บทญ.",
@@ -286,7 +285,7 @@ def main():
                 message_placeholder.markdown("Searching for answers... 🔍")
                 
                 response = st.session_state.qa_chain.invoke({"query": prompt})
-                full_response = response["result"]
+                full_response = response["result"].replace("\n", "  \n")
                 
                 message_placeholder.markdown(full_response)
                 
