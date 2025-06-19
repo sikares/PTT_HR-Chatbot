@@ -40,8 +40,6 @@ def init_session_state():
         'chat_history': [],
         'data_sources': load_data_sources(),
         'current_file': None,
-        'evaluation_results': None,
-        'feedback_stats': None
     }
 
     for key, value in defaults.items():

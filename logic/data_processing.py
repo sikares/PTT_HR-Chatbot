@@ -9,10 +9,16 @@ def clean_excel_data(df: pd.DataFrame) -> pd.DataFrame:
     df_clean = df_clean.dropna(how='all')
     df_clean = df_clean.dropna(axis=1, how='all')
     
-    for col in df_clean.select_dtypes(include=['object']).columns:
+    status_columns = ["รายละเอียด Status", "Status"]
+    
+    for col in df_clean.columns:
         df_clean[col] = df_clean[col].astype(str)
         df_clean[col] = df_clean[col].str.strip()
-        df_clean[col] = df_clean[col].replace(['nan', 'None', '', ' ', 'NULL'], np.nan)
+        
+        if col in status_columns:
+            df_clean[col] = df_clean[col].replace(['nan', 'None', '', ' ', 'NULL'], "ไม่มีข้อมูล")
+        else:
+            df_clean[col] = df_clean[col].replace(['nan', 'None', '', ' ', 'NULL'], np.nan)
     
     return df_clean
 

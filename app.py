@@ -4,13 +4,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 import shelve
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from logic.data_processing import clean_and_process_data
 from logic.chunking import create_text_chunks, chunk_texts_intelligently
-from logic.embedding import create_vector_store, update_vector_store, get_embedding_model
+from logic.embedding import get_embedding_model
 from logic.qa_chain import get_qa_chain
 from utils.session import init_session_state, update_data_sources, load_data_sources, save_data_sources
-from utils.evaluation import evaluate_qa_chain, calculate_metrics, TEST_QUESTIONS
 from core.vector_store import QdrantVectorStore
 
 USER_AVATAR = "👤"
@@ -24,6 +26,7 @@ SELECTED_COLUMNS = [
     "รายละเอียด Feedback",
     "แนวทางการดำเนินการ",
     "สถานะการแจ้ง Process Owner ",
+    "Status",
     "รายละเอียด Status"
 ]
 
@@ -158,13 +161,6 @@ def refresh_vector_store(chunks: List[str]):
         st.session_state.vectordb = None
         st.session_state.qa_chain = None
 
-def display_evaluation_results(eval_df: pd.DataFrame):
-    st.subheader("📝 Evaluation Results")
-    st.dataframe(eval_df[["question", "expected", "actual", "match"]])
-
-    metrics = calculate_metrics(eval_df)
-    st.markdown(f"**Accuracy:** {metrics['accuracy']:.2%} ({metrics['correct_answers']}/{metrics['total_questions']})")
-
 def main():
     st.set_page_config(
         page_title="PTT HR Chatbot",
@@ -247,21 +243,6 @@ def main():
             user_messages = len([m for m in st.session_state.messages if m["role"] == "user"])
             bot_messages = len([m for m in st.session_state.messages if m["role"] == "assistant"])
             st.info(f"💬 Messages: {user_messages} questions, {bot_messages} responses")
-
-        st.markdown("---")
-        
-        st.header("⚙️ Evaluation")
-        if st.button("Run Evaluation on Test Questions"):
-            if st.session_state.qa_chain:
-                with st.spinner("Evaluating..."):
-                    eval_df = evaluate_qa_chain(st.session_state.qa_chain, TEST_QUESTIONS)
-                    st.session_state.eval_results = eval_df
-                    display_evaluation_results(eval_df)
-            else:
-                st.warning("Please process data first to create QA chain.")
-
-        if "eval_results" in st.session_state:
-            display_evaluation_results(st.session_state.eval_results)
 
     for message in st.session_state.messages:
         avatar = USER_AVATAR if message["role"] == "user" else BOT_AVATAR
