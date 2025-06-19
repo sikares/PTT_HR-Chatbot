@@ -196,6 +196,6 @@ cython_debug/
 # Data files
 data/
 
-ptt_chat_history.bak
-ptt_chat_history.dat
-ptt_chat_history.dir
+ptt_chat_history_sessions.bak
+ptt_chat_history_sessions.dat
+ptt_chat_history_sessions.dir

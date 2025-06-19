@@ -1,13 +1,14 @@
 from langchain.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
+from langchain_ollama import OllamaLLM
 from langchain.schema import BaseRetriever, Document
-from langchain_openai import ChatOpenAI
+# from langchain_openai import ChatOpenAI
+from langchain.chains import RetrievalQA
 from core.vector_store import QdrantVectorStore
 from typing import Optional, List
 from pydantic import BaseModel
 from logic.embedding import get_embedding_model
 
-DEFAULT_MODEL_NAME = "gpt-4.1-mini"
+DEFAULT_MODEL_NAME = "supachai/llama-3-typhoon-v1.5"
 DEFAULT_TEMPERATURE = 0.3
 DEFAULT_TOP_K = 5
 
@@ -31,7 +32,7 @@ TEMPLATE = """คุณคือผู้ช่วยฝ่ายทรัพย
 - **รายละเอียด Status**: ดึงจากช่อง "รายละเอียด Status"  
     → หากไม่พบข้อมูลในช่องนี้ ให้ตอบว่า:  
     `"ไม่พบข้อมูลรายละเอียด Status กรุณาสอบถามฝ่าย [ค่าจากช่อง 'บคญ./บทญ.']"`
-- **สรุป**: สรุปใจความสำคัญของ “รายละเอียด Feedback”, “แนวทางการดำเนินการ” และ “รายละเอียด Status”  
+- **สรุปข้อมูล**: สรุปใจความสำคัญของ “รายละเอียด Feedback”, “แนวทางการดำเนินการ” และ “รายละเอียด Status”  
     → ความยาวไม่เกิน 3 บรรทัด (ประมาณ 2-4 ประโยค)  
     → ใช้ภาษาทางการ ชัดเจน และเข้าใจง่าย
 
@@ -61,7 +62,7 @@ TEMPLATE = """คุณคือผู้ช่วยฝ่ายทรัพย
 สถานะการแจ้ง Process Owner: Completed
 Status: ได้รับการแก้ไขจาก Process Owner แล้ว
 รายละเอียด Status: ศบญ. ดำเนินการแก้ไขเรียบร้อยแล้ว 
-สรุป: ข้อมูล Career Path ของตำแหน่งผู้จัดการ พธม. ในระบบ COACH มีข้อผิดพลาด เนื่องจากไม่แสดงฟังก์ชันที่ควรมีจำนวน 10 รายการ ทาง ศบญ. ได้ประสานงานและอัปโหลดข้อมูลเข้าสู่ระบบเรียบร้อยแล้ว ขณะนี้ได้ดำเนินการแก้ไขปัญหาเสร็จสมบูรณ์แล้วและระบบแสดงผลถูกต้องครบถ้วน
+สรุปข้อมูล: ข้อมูล Career Path ของตำแหน่งผู้จัดการ พธม. ในระบบ COACH มีข้อผิดพลาด เนื่องจากไม่แสดงฟังก์ชันที่ควรมีจำนวน 10 รายการ ทาง ศบญ. ได้ประสานงานและอัปโหลดข้อมูลเข้าสู่ระบบเรียบร้อยแล้ว ขณะนี้ได้ดำเนินการแก้ไขปัญหาเสร็จสมบูรณ์แล้วและระบบแสดงผลถูกต้องครบถ้วน
 
 ---
 
@@ -114,7 +115,7 @@ def get_qa_chain(vectordb: QdrantVectorStore, model_name: str = DEFAULT_MODEL_NA
             input_variables=["context", "question"]
         )
 
-        llm = ChatOpenAI(
+        llm = OllamaLLM(
             model=model_name,
             temperature=DEFAULT_TEMPERATURE
         )
