@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import re
-from typing import List, Dict, Any
+from typing import List
 
 def clean_excel_data(df: pd.DataFrame) -> pd.DataFrame:
     df_clean = df.copy()

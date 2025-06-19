@@ -46,7 +46,6 @@ def load_all_chats() -> Dict[str, List[Dict]]:
         st.error(f"Error loading chat sessions: {e}")
         return {}
 
-
 def save_all_chats(chats: Dict[str, List[Dict]]):
     try:
         with shelve.open(CHAT_DB) as db:
@@ -54,12 +53,10 @@ def save_all_chats(chats: Dict[str, List[Dict]]):
     except Exception as e:
         st.error(f"Error saving chat sessions: {e}")
 
-
 def save_processed_chunks(chunks: List[str]):
     import json
     with open(DATA_DIR / "processed_chunks.json", "w", encoding="utf-8") as f:
         json.dump(chunks, f, ensure_ascii=False, indent=2)
-
 
 def load_processed_chunks() -> List[str]:
     import json
@@ -70,7 +67,6 @@ def load_processed_chunks() -> List[str]:
     except Exception as e:
         st.error(f"Error loading processed chunks: {e}")
     return []
-
 
 def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, Any]]:
     new_chunks = []
@@ -127,7 +123,6 @@ def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, A
 
     return new_chunks, file_info
 
-
 def reload_all_chunks_from_sources() -> List[str]:
     all_chunks = []
     for filename in st.session_state.data_sources.keys():
@@ -143,7 +138,6 @@ def reload_all_chunks_from_sources() -> List[str]:
         except Exception as e:
             st.error(f"Unable to load file {filename}: {str(e)}")
     return all_chunks
-
 
 def refresh_vector_store(chunks: List[str]):
     if not chunks:
