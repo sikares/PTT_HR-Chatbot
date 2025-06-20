@@ -202,7 +202,7 @@ def main():
     else:
         st.session_state.messages = []
 
-    st.title("PTT HR Feedback Chatbot 🤖")
+    st.title("🏢 PTT HR Feedback Chatbot")
     st.markdown("Analyze employee feedback data with AI")
 
     with st.sidebar:
@@ -349,7 +349,7 @@ def main():
                 for char in full_response:
                     typed_response += char
                     message_placeholder.markdown(typed_response)
-                    time.sleep(0.01)
+                    time.sleep(0.005)
             except Exception as e:
                 full_response = f"Sorry, I encountered an error: {str(e)}"
                 message_placeholder.markdown(full_response)
