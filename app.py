@@ -7,6 +7,7 @@ import shelve
 from dotenv import load_dotenv
 import time
 import uuid
+import hashlib
 
 load_dotenv()
 
@@ -53,24 +54,30 @@ def save_all_chats(chats: Dict[str, List[Dict]]):
     except Exception as e:
         st.error(f"Error saving chat sessions: {e}")
 
-def save_processed_chunks(chunks: List[str]):
-    import json
-    with open(DATA_DIR / "processed_chunks.json", "w", encoding="utf-8") as f:
-        json.dump(chunks, f, ensure_ascii=False, indent=2)
+def get_file_hash(file_content: bytes) -> str:
+    return hashlib.md5(file_content).hexdigest()
 
-def load_processed_chunks() -> List[str]:
-    import json
+def initialize_vector_store():
     try:
-        if (DATA_DIR / "processed_chunks.json").exists():
-            with open(DATA_DIR / "processed_chunks.json", "r", encoding="utf-8") as f:
-                return json.load(f)
+        vector_store = QdrantVectorStore()
+        st.session_state.vectordb = vector_store
+        
+        data_sources = load_data_sources()
+        if data_sources:
+            st.session_state.qa_chain = get_qa_chain(vector_store)
+            st.session_state.data_sources = data_sources
+        else:
+            st.session_state.qa_chain = None
+            
     except Exception as e:
-        st.error(f"Error loading processed chunks: {e}")
-    return []
+        st.error(f"Error initializing vector store: {e}")
+        st.session_state.vectordb = None
+        st.session_state.qa_chain = None
 
 def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, Any]]:
     new_chunks = []
     file_info = {}
+    vector_store = st.session_state.vectordb
 
     upload_dir = DATA_DIR / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -83,10 +90,19 @@ def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, A
             st.error(f"❌ {file.name} file size is larger than {MAX_UPLOAD_SIZE_MB} MB")
             continue
 
+        file_content = file.getbuffer()
+        file_hash = get_file_hash(file_content)
+        
+        if file.name in st.session_state.data_sources:
+            existing_hash = st.session_state.data_sources[file.name].get('file_hash', '')
+            if existing_hash == file_hash:
+                st.info(f"📄 {file.name} already exists with same content. Skipping.")
+                continue
+
         save_path = upload_dir / file.name
         try:
             with open(save_path, "wb") as f:
-                f.write(file.getbuffer())
+                f.write(file_content)
         except Exception as e:
             st.error(f"❌ Failed to save {file.name}: {str(e)}")
             continue
@@ -102,13 +118,25 @@ def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, A
 
             processed_data = clean_and_process_data(df, SELECTED_COLUMNS)
             chunks = create_text_chunks(processed_data, SELECTED_COLUMNS)
+            chunks = chunk_texts_intelligently(chunks)
+            
+            embeddings = get_embedding_model()
+            vectors = embeddings.embed_documents(chunks)
+            
+            chunk_ids = [str(uuid.uuid4()) for _ in range(len(chunks))]
+            payloads = [{"text": chunk, "filename": file.name, "original_id": f"{file.name}_{i}"} for i, chunk in enumerate(chunks)]
+            
+            vector_store.insert_vectors(vectors, ids=chunk_ids, payloads=payloads)
+            
             new_chunks.extend(chunks)
 
             file_info[file.name] = {
                 "upload_date": datetime.now().isoformat(),
                 "rows": len(processed_data),
                 "chunks": len(chunks),
-                "filename": file.name
+                "filename": file.name,
+                "file_hash": file_hash,
+                "chunk_ids": chunk_ids
             }
 
             st.success(f"✅ Processed {file.name} ({len(chunks)} chunks)")
@@ -118,44 +146,22 @@ def process_uploaded_files(uploaded_files: List) -> Tuple[List[str], Dict[str, A
                 save_path.unlink()
             continue
 
-    if new_chunks:
-        new_chunks = chunk_texts_intelligently(new_chunks)
-
     return new_chunks, file_info
 
-def reload_all_chunks_from_sources() -> List[str]:
-    all_chunks = []
-    for filename in st.session_state.data_sources.keys():
-        filepath = DATA_DIR / filename
-        if not filepath.exists():
-            st.warning(f"File {filename} not found in data folder")
-            continue
-        try:
-            df = pd.read_excel(filepath)
-            processed_data = clean_and_process_data(df, SELECTED_COLUMNS)
-            chunks = create_text_chunks(processed_data, SELECTED_COLUMNS)
-            all_chunks.extend(chunks)
-        except Exception as e:
-            st.error(f"Unable to load file {filename}: {str(e)}")
-    return all_chunks
-
-def refresh_vector_store(chunks: List[str]):
-    if not chunks:
-        st.session_state.vectordb = None
-        st.session_state.qa_chain = None
-        return
+def delete_file_from_vector_store(filename: str):
     try:
-        vector_store = QdrantVectorStore()
-        embeddings = get_embedding_model()
-        vectors = embeddings.embed_documents(chunks)
-        vector_store.insert_vectors(vectors, payloads=[{"text": chunk} for chunk in chunks])
-        st.session_state.vectordb = vector_store
-        st.session_state.qa_chain = get_qa_chain(vector_store)
-        st.success(f"✅ Successfully created vector store with {len(chunks)} chunks")
+        vector_store = st.session_state.vectordb
+        if filename in st.session_state.data_sources:
+            chunk_ids = st.session_state.data_sources[filename].get('chunk_ids', [])
+            if chunk_ids:
+                vector_store.delete_vectors(chunk_ids)
+        
+        file_path = DATA_DIR / "uploads" / filename
+        if file_path.exists():
+            file_path.unlink()
+            
     except Exception as e:
-        st.error(f"❌ Failed to refresh vector store: {str(e)}")
-        st.session_state.vectordb = None
-        st.session_state.qa_chain = None
+        st.error(f"Error deleting file from vector store: {e}")
 
 def get_chat_name(messages: List[Dict]) -> str:
     for msg in messages:
@@ -176,6 +182,10 @@ def find_empty_chat(all_chats: Dict[str, List[Dict]]) -> str:
 def main():
     st.set_page_config(page_title="PTT HR Chatbot", page_icon="icon/ptt.ico", layout="wide")
     init_session_state()
+    
+    if not st.session_state.vectordb:
+        initialize_vector_store()
+    
     all_chats = load_all_chats()
 
     if "active_chat_id" not in st.session_state:
@@ -191,11 +201,6 @@ def main():
         st.session_state.messages = all_chats[st.session_state.active_chat_id]
     else:
         st.session_state.messages = []
-
-    if not st.session_state.data_sources:
-        st.session_state.data_sources = load_data_sources()
-    if not st.session_state.all_chunks:
-        st.session_state.all_chunks = load_processed_chunks()
 
     st.title("PTT HR Feedback Chatbot 🤖")
     st.markdown("Analyze employee feedback data with AI")
@@ -273,13 +278,14 @@ def main():
         if uploaded_files and st.button("Process Files"):
             with st.spinner("Processing files..."):
                 new_chunks, file_info = process_uploaded_files(uploaded_files)
-                if new_chunks:
-                    st.session_state.all_chunks.extend(new_chunks)
+                if file_info:
                     update_data_sources(file_info)
                     st.session_state.data_sources.update(file_info)
                     save_data_sources(st.session_state.data_sources)
-                    save_processed_chunks(st.session_state.all_chunks)
-                    refresh_vector_store(st.session_state.all_chunks)
+                    
+                    if not st.session_state.qa_chain:
+                        st.session_state.qa_chain = get_qa_chain(st.session_state.vectordb)
+                    
                     st.success("✅ Data processing complete!")
 
         st.markdown("---")
@@ -303,21 +309,15 @@ def main():
                     confirm_cols = st.columns([1, 1])
                     st.warning(f"⚠️ Are you sure you want to delete '{filename}'?")
                     if confirm_cols[0].button("✅ Yes, Delete", key=f"confirm_del_file_{filename}"):
+                        delete_file_from_vector_store(filename)
                         del st.session_state.data_sources[filename]
                         save_data_sources(st.session_state.data_sources)
-
-                        file_path = DATA_DIR / "uploads" / filename
-                        if file_path.exists():
-                            try:
-                                file_path.unlink()
-                            except Exception as e:
-                                st.error(f"Error deleting file '{filename}' from disk: {str(e)}")
-
-                        st.session_state.all_chunks = reload_all_chunks_from_sources()
-                        save_processed_chunks(st.session_state.all_chunks)
-                        refresh_vector_store(st.session_state.all_chunks)
+                        
+                        if not st.session_state.data_sources:
+                            st.session_state.qa_chain = None
 
                         st.session_state.pop("file_to_confirm_delete", None)
+                        st.success(f"✅ Deleted {filename}")
                         st.rerun()
 
                     if confirm_cols[1].button("❌ Cancel", key=f"cancel_del_file_{filename}"):

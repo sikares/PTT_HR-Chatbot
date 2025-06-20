@@ -14,7 +14,6 @@ def load_data_sources() -> Dict[str, Any]:
         if DATA_SOURCES_PATH.exists():
             with open(DATA_SOURCES_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
-
                 for key, val in data.items():
                     if isinstance(val, dict) and "uploaded_at" in val and isinstance(val["uploaded_at"], str):
                         val["uploaded_at"] = datetime.fromisoformat(val["uploaded_at"])
@@ -29,8 +28,11 @@ def save_data_sources(data: Dict[str, Any]):
             return o.isoformat()
         return str(o)
 
-    with open(DATA_SOURCES_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2, default=default_converter)
+    try:
+        with open(DATA_SOURCES_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, default=default_converter)
+    except Exception as e:
+        st.error(f"Error saving data sources: {e}")
 
 def init_session_state():
     defaults = {
@@ -38,13 +40,19 @@ def init_session_state():
         'qa_chain': None,
         'all_chunks': [],
         'chat_history': [],
-        'data_sources': load_data_sources(),
+        'data_sources': {},
         'current_file': None,
+        'messages': []
     }
 
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+def remove_data_source(filename: str):
+    if 'data_sources' in st.session_state and filename in st.session_state.data_sources:
+        del st.session_state.data_sources[filename]
+        save_data_sources(st.session_state.data_sources)
 
 def update_data_sources(file_info: Dict[str, Any]):
     if 'data_sources' not in st.session_state or not st.session_state.data_sources:
