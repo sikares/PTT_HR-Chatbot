@@ -164,6 +164,15 @@ def get_chat_name(messages: List[Dict]) -> str:
             return (text[:30] + "...") if len(text) > 30 else text
     return "New Chat"
 
+def is_chat_empty(messages: List[Dict]) -> bool:
+    return not any(msg["role"] == "user" and msg["content"].strip() for msg in messages)
+
+def find_empty_chat(all_chats: Dict[str, List[Dict]]) -> str:
+    for chat_id, messages in all_chats.items():
+        if is_chat_empty(messages):
+            return chat_id
+    return None
+
 def main():
     st.set_page_config(page_title="PTT HR Chatbot", page_icon="icon/ptt.ico", layout="wide")
     init_session_state()
@@ -193,6 +202,22 @@ def main():
 
     with st.sidebar:
         st.header("💬 Chats")
+
+        if st.button("➕ New Chat"):
+            empty_chat_id = find_empty_chat(all_chats)
+            
+            if empty_chat_id:
+                st.session_state.active_chat_id = empty_chat_id
+                st.info("⚡ Switched to existing empty chat")
+            else:
+                new_id = str(uuid.uuid4())
+                st.session_state.active_chat_id = new_id
+                all_chats[new_id] = []
+                save_all_chats(all_chats)
+                st.success("✨ Created new chat")
+            
+            st.rerun()
+
         sorted_chat_ids = [st.session_state.active_chat_id] + [
             cid for cid in all_chats.keys() if cid != st.session_state.active_chat_id
         ]
@@ -201,6 +226,10 @@ def main():
             messages = all_chats.get(chat_id, [])
             chat_name = get_chat_name(messages)
             is_active = (chat_id == st.session_state.active_chat_id)
+            
+            if is_chat_empty(messages):
+                chat_name = f"💭 {chat_name}"
+            
             display_label = chat_name + (" (Active)" if is_active else "")
             cols = st.columns([4, 1])
 
@@ -236,20 +265,6 @@ def main():
                         st.session_state.pop("chat_to_confirm_delete", None)
                         st.rerun()
 
-        def has_user_input(messages: List[Dict]) -> bool:
-            return any(msg["role"] == "user" and msg["content"].strip() for msg in messages)
-
-        if st.button("➕ New Chat"):
-            current_messages = all_chats.get(st.session_state.active_chat_id, [])
-            if not has_user_input(current_messages):
-                st.warning("⚠️ Please enter a message in the current chat before starting a new one.")
-            else:
-                new_id = str(uuid.uuid4())
-                st.session_state.active_chat_id = new_id
-                all_chats.setdefault(new_id, [])
-                save_all_chats(all_chats)
-                st.rerun()
-
         st.markdown("---")
 
         st.header("📂 Data Management")
@@ -267,25 +282,46 @@ def main():
                     refresh_vector_store(st.session_state.all_chunks)
                     st.success("✅ Data processing complete!")
 
+        st.markdown("---")
+
         st.subheader("📋 Uploaded Files")
         if st.session_state.data_sources:
             for filename, info in st.session_state.data_sources.items():
                 with st.expander(f"📄 {filename}"):
-                    st.write(f"📅 Uploaded: {info.get('upload_date', '-')}")
-                    st.write(f"📊 Rows: {info.get('rows', 0):,}")
-                    st.write(f"🧹 Chunks: {info.get('chunks', 0):,}")
+                    uploaded = info.get('upload_date', '-')
+                    try:
+                        uploaded_time = datetime.fromisoformat(uploaded).strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        uploaded_time = uploaded 
+                    st.write(f"🕒 Uploaded Time: {uploaded_time}")
+
                     if st.button(f"🗑️ Delete {filename}", key=f"del_file_{filename}"):
+                        st.session_state.file_to_confirm_delete = filename
+                        st.rerun()
+
+                if st.session_state.get("file_to_confirm_delete") == filename:
+                    confirm_cols = st.columns([1, 1])
+                    st.warning(f"⚠️ Are you sure you want to delete '{filename}'?")
+                    if confirm_cols[0].button("✅ Yes, Delete", key=f"confirm_del_file_{filename}"):
                         del st.session_state.data_sources[filename]
                         save_data_sources(st.session_state.data_sources)
+
                         file_path = DATA_DIR / "uploads" / filename
                         if file_path.exists():
                             try:
                                 file_path.unlink()
                             except Exception as e:
-                                st.error(f"Error deleting file {filename} from disk: {str(e)}")
+                                st.error(f"Error deleting file '{filename}' from disk: {str(e)}")
+
                         st.session_state.all_chunks = reload_all_chunks_from_sources()
                         save_processed_chunks(st.session_state.all_chunks)
                         refresh_vector_store(st.session_state.all_chunks)
+
+                        st.session_state.pop("file_to_confirm_delete", None)
+                        st.rerun()
+
+                    if confirm_cols[1].button("❌ Cancel", key=f"cancel_del_file_{filename}"):
+                        st.session_state.pop("file_to_confirm_delete", None)
                         st.rerun()
         else:
             st.info("No files uploaded yet")
