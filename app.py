@@ -16,6 +16,7 @@ from logic.chunking import create_text_chunks, chunk_texts_intelligently
 from logic.embedding import get_embedding_model
 from logic.qa_chain import get_qa_chain
 from utils.session import init_session_state, update_data_sources, load_data_sources, save_data_sources
+from utils.auth import require_auth, show_logout_button, is_authenticated, show_login_form
 from core.vector_store import QdrantVectorStore
 
 USER_AVATAR = "👤"
@@ -179,23 +180,41 @@ def find_empty_chat(all_chats: Dict[str, List[Dict]]) -> str:
             return chat_id
     return None
 
-def main():
-    st.set_page_config(page_title="PTT HR Chatbot", page_icon="icon/ptt.ico", layout="wide")
+def get_most_recent_chat(all_chats: Dict[str, List[Dict]]) -> str:
+    if not all_chats:
+        return None
+    
+    non_empty_chats = [chat_id for chat_id, messages in all_chats.items() if messages]
+    if non_empty_chats:
+        return non_empty_chats[0]
+    
+    return next(iter(all_chats))
+
+def initialize_active_chat():
+    all_chats = load_all_chats()
+    
+    if "active_chat_id" not in st.session_state:
+        if all_chats:
+            most_recent_chat = get_most_recent_chat(all_chats)
+            if most_recent_chat:
+                st.session_state.active_chat_id = most_recent_chat
+            else:
+                st.session_state.active_chat_id = next(iter(all_chats))
+        else:
+            new_id = str(uuid.uuid4())
+            st.session_state.active_chat_id = new_id
+            all_chats[new_id] = []
+            save_all_chats(all_chats)
+    
+    return all_chats
+
+def main_app():
     init_session_state()
     
     if not st.session_state.vectordb:
         initialize_vector_store()
     
-    all_chats = load_all_chats()
-
-    if "active_chat_id" not in st.session_state:
-        if all_chats:
-            st.session_state.active_chat_id = next(iter(all_chats))
-        else:
-            new_id = str(uuid.uuid4())
-            st.session_state.active_chat_id = new_id
-            all_chats.setdefault(new_id, [])
-            save_all_chats(all_chats)
+    all_chats = initialize_active_chat()
 
     if st.session_state.active_chat_id in all_chats:
         st.session_state.messages = all_chats[st.session_state.active_chat_id]
@@ -206,6 +225,8 @@ def main():
     st.markdown("Analyze employee feedback data with AI")
 
     with st.sidebar:
+        show_logout_button()
+        
         st.header("💬 Chats")
 
         if st.button("➕ New Chat"):
@@ -231,7 +252,6 @@ def main():
             messages = all_chats.get(chat_id, [])
             chat_name = get_chat_name(messages)
             is_active = (chat_id == st.session_state.active_chat_id)
-            
             if is_chat_empty(messages):
                 chat_name = f"💭 {chat_name}"
             
@@ -360,6 +380,13 @@ def main():
     if not st.session_state.data_sources:
         st.info("👆 Please upload Excel files using the sidebar to start chatting with your data!")
 
+def main():
+    st.set_page_config(page_title="PTT HR Chatbot", page_icon="icon/ptt.ico", layout="wide")
+    
+    if not is_authenticated():
+        show_login_form()
+    else:
+        main_app()
 
 if __name__ == "__main__":
     main()
