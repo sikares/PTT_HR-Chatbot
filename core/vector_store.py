@@ -21,7 +21,7 @@ class QdrantVectorStore:
             collection_names = [c.name for c in existing_collections]
             
             if self.collection_name not in collection_names:
-                self.client.recreate_collection(
+                self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=models.VectorParams(
                         size=VECTOR_SIZE,

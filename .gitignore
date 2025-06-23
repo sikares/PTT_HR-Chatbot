@@ -199,3 +199,5 @@ data/
 ptt_chat_history_sessions.bak
 ptt_chat_history_sessions.dat
 ptt_chat_history_sessions.dir
+
+config.yaml

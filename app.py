@@ -208,6 +208,7 @@ def initialize_active_chat():
     
     return all_chats
 
+@require_auth()
 def main_app():
     init_session_state()
     
@@ -382,11 +383,12 @@ def main_app():
 
 def main():
     st.set_page_config(page_title="PTT HR Chatbot", page_icon="icon/ptt.ico", layout="wide")
-    
+
     if not is_authenticated():
         show_login_form()
-    else:
-        main_app()
+        st.stop()
+
+    main_app()
 
 if __name__ == "__main__":
     main()
