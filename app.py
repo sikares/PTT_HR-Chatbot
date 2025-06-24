@@ -235,7 +235,7 @@ def main_app():
             
             if empty_chat_id:
                 st.session_state.active_chat_id = empty_chat_id
-                st.info("⚡ Switched to existing empty chat")
+                st.info("✨ Switched to existing empty chat")
             else:
                 new_id = str(uuid.uuid4())
                 st.session_state.active_chat_id = new_id

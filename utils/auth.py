@@ -3,8 +3,14 @@ import os
 from dotenv import load_dotenv
 import bcrypt
 from functools import wraps
+import json
+from pathlib import Path
+from datetime import datetime, timedelta
 
 load_dotenv()
+
+AUTH_STORE_PATH = Path("data") / "auth_state.json"
+AUTH_STORE_PATH.parent.mkdir(exist_ok=True)
 
 def get_credentials():
     username = os.getenv('HR_USERNAME')
@@ -34,6 +40,33 @@ def initialize_auth_state():
         st.session_state.authenticated = False
     if 'username' not in st.session_state:
         st.session_state.username = None
+    
+    auth_data = load_auth_data()
+    if auth_data:
+        if 'expiry' in auth_data and datetime.fromisoformat(auth_data['expiry']) > datetime.now():
+            st.session_state.authenticated = True
+            st.session_state.username = auth_data.get('username')
+
+def load_auth_data():
+    try:
+        if AUTH_STORE_PATH.exists():
+            with open(AUTH_STORE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        return None
+    return None
+
+def save_auth_data(username: str):
+    try:
+        expiry = (datetime.now() + timedelta(hours=24)).isoformat()
+        auth_data = {
+            'username': username,
+            'expiry': expiry
+        }
+        with open(AUTH_STORE_PATH, "w", encoding="utf-8") as f:
+            json.dump(auth_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Error saving auth state: {e}")
 
 def is_authenticated() -> bool:
     initialize_auth_state()
@@ -82,6 +115,7 @@ def show_login_form():
                             if username == env_username and check_password(password, env_password_hash):
                                 st.session_state.authenticated = True
                                 st.session_state.username = username
+                                save_auth_data(username)
                                 st.success("✅ Login successful! Redirecting...")
                                 st.query_params.clear()
                                 st.rerun()
@@ -91,9 +125,12 @@ def show_login_form():
                             st.error(f"An error occurred: {str(e)}")
 
 def logout():
-    for key in ['authenticated', 'username']:
-        st.session_state.pop(key, None)
-
+    st.session_state.authenticated = False
+    st.session_state.username = None
+    try:
+        AUTH_STORE_PATH.unlink()
+    except Exception:
+        pass
     st.success("👋 Logged out successfully! Redirecting...")
     st.query_params.clear()
     st.rerun()
@@ -102,7 +139,6 @@ def show_logout_button():
     if st.session_state.get('authenticated', False):
         with st.sidebar:
             if st.session_state.get('username'):
-                st.caption(f"🙋 Logged in as: {st.session_state['username']}")
-
+                st.markdown(f"✨ Logged in as: {st.session_state['username']}")
             if st.button("🚪 Logout", use_container_width=True, key="logout_btn"):
                 logout()

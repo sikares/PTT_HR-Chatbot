@@ -37,21 +37,22 @@ class QdrantVectorStore:
                 )
             )
 
-    def search_vectors(
-        self,
-        query_vector: List[float],
-        top_k: int = DEFAULT_TOP_K
-    ) -> List[models.ScoredPoint]:
-        try:
-            results = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                limit=top_k
-            )
-            return results
-        except Exception as e:
-            print(f"Error searching vectors: {e}")
-            return []
+    def search_vectors(self, query_vector: List[float], top_k: int = DEFAULT_TOP_K) -> List[models.ScoredPoint]:
+        print(f"Query vector length: {len(query_vector)}")
+        if len(query_vector) != VECTOR_SIZE:
+            print(f"ERROR: Query vector dimension mismatch! Expected {VECTOR_SIZE}, got {len(query_vector)}")
+            raise ValueError(f"Query vector size {len(query_vector)} does not match expected {VECTOR_SIZE}")
+
+        if any(x is None or not isinstance(x, float) for x in query_vector):
+            print("ERROR: Query vector contains invalid entries")
+            raise ValueError("Query vector contains non-float or None values")
+        
+        results = self.client.search(
+            collection_name=self.collection_name,
+            query_vector=query_vector,
+            limit=top_k
+        )
+        return results
 
     def insert_vectors(
         self,

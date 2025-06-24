@@ -43,7 +43,7 @@ TEMPLATE = """คุณคือผู้ช่วยฝ่ายทรัพย
     → ความยาวไม่เกิน 4 บรรทัด  
     → **เอามา 1 ตัวอย่างเท่านั้น ที่เกี่ยวข้องที่สุดมากที่สุด** โดยต้องสอดคล้องกับอ้างอิงจากข้อมูลที่เกี่ยวข้อง
 
-- อ้างอิงจากข้อมูลต่อไปนี้:  
+- อ้างอิงจากข้อมูลต่อไปนี้: (**เอามา 1 ตัวอย่างเท่านั้น ที่เกี่ยวข้องที่สุดมากที่สุด** โดยต้องสอดคล้องกับคำตอบที่เกี่ยวข้อง)  
     - ที่มาของ Feedback: (ค่าจากช่อง "ที่มาของ Feedback")
     - หน่วยงาน (BU): (ค่าจากช่อง "BU")
     - ฝ่าย (บคญ./บทญ.): ค่าจากช่อง "บคญ./บทญ." (ห้ามแปลงตัวย่อ)  
@@ -152,13 +152,16 @@ Status: ไม่พบข้อมูล Status
 class CustomRetriever(BaseRetriever, BaseModel):
     vector_store: QdrantVectorStore
 
+    class Config:
+        arbitrary_types_allowed = True
+
     def get_relevant_documents(self, query: str) -> List[Document]:
         query_embedding = get_embedding_model().embed_query(query)
         results = self.vector_store.search_vectors(
             query_vector=query_embedding,
             top_k=DEFAULT_TOP_K
         )
-        
+
         documents = []
         for result in results:
             if hasattr(result, 'payload') and isinstance(result.payload, dict):
