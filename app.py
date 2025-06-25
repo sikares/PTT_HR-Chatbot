@@ -16,7 +16,7 @@ from logic.chunking import create_text_chunks, chunk_texts_intelligently
 from logic.embedding import get_embedding_model
 from logic.qa_chain import get_qa_chain
 from utils.session import init_session_state, update_data_sources, load_data_sources, save_data_sources
-from utils.auth import require_auth, show_logout_button, is_authenticated, show_login_form
+from utils.auth import require_auth, show_logout_button, is_authenticated, show_login_form, is_admin, show_admin_panel
 from core.vector_store import QdrantVectorStore
 
 USER_AVATAR = "👤"
@@ -210,6 +210,10 @@ def initialize_active_chat():
 
 @require_auth()
 def main_app():
+    if is_admin():
+        show_admin_panel()
+        return
+    
     init_session_state()
     
     if not st.session_state.vectordb:
