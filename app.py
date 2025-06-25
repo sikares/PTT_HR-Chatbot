@@ -168,7 +168,7 @@ def get_chat_name(messages: List[Dict]) -> str:
     for msg in messages:
         if msg["role"] == "user" and msg["content"].strip():
             text = msg["content"].strip()
-            return (text[:30] + "...") if len(text) > 30 else text
+            return (text[:20] + "...") if len(text) > 20 else text
     return "New Chat"
 
 def is_chat_empty(messages: List[Dict]) -> bool:

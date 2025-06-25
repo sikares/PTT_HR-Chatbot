@@ -231,6 +231,6 @@ def show_logout_button():
         with st.sidebar:
             if st.session_state.get('username'):
                 user_type_display = "Admin" if is_admin() else "User"
-                st.markdown(f"✨ Logged in as: {st.session_state['username']} ({user_type_display})")
+                st.markdown(f"✨ Logged in as: {st.session_state['username']}")
             if st.button("🚪 Logout", use_container_width=True, key="logout_btn"):
                 logout()
