@@ -1,165 +1,235 @@
-# 🏢 PTT HR Feedback Chatbot
+# 🏢 PTT HR Feedback Chatbot - Proof of Concept (PoC)
 
-A secure, private, and interactive chatbot for analyzing and querying HR feedback data at PTT. Upload Excel files, process employee feedback, and chat with your data using advanced AI and vector search.
+## Overview
 
----
-
-## Features
-
-- **Secure Login**: Only authorized HR users can access the system.
-- **Excel Upload**: Upload multiple Excel files containing feedback data.
-- **Automated Data Cleaning**: Cleans, consolidates, and processes messy HR feedback data.
-- **Semantic Search**: Uses embeddings and Qdrant vector database for fast, relevant retrieval.
-- **Chatbot Interface**: Ask questions in natural language and get structured, referenced answers.
-- **Chat History**: Multi-session chat history with easy switching and deletion.
-- **Data Management**: View, delete, and manage uploaded files and their vector representations.
-- **Configurable Prompt**: Ensures answers are always based on uploaded data, never hallucinated.
-- **Runs Locally**: All data and processing stay on your machine or private server.
+A secure, private, and interactive chatbot system for analyzing and querying employee feedback data at PTT. Upload Excel files to process feedback, then interactively chat with your data using advanced AI and vector search technology (Pinecone) through an intuitive Streamlit interface.
 
 ---
 
-## Tech Stack
+## 📌 Key Features
 
-- **Python 3.9+**
-- [Streamlit](https://streamlit.io/) (UI)
-- [LangChain](https://python.langchain.com/) (LLM orchestration)
-- [OpenAI API](https://platform.openai.com/) (LLM, e.g., GPT-4)
-- [HuggingFace Sentence Transformers](https://www.sbert.net/) (Embeddings)
-- [Qdrant](https://qdrant.tech/) (Vector DB, via Docker)
-- [Pandas, openpyxl](https://pandas.pydata.org/) (Excel processing)
-- [bcrypt, python-dotenv](https://pypi.org/project/bcrypt/) (Authentication)
-- [Docker Compose](https://docs.docker.com/compose/) (for Qdrant)
+✅ **Authentication**
+
+- Supports 2 user types:
+  - HR_Users (regular users)
+  - HR_Admin (admins who can reset HR_Users passwords)
+- Stores login status using session and JSON files
+
+✅ **Admin Panel**
+
+- Admins can reset HR_Users passwords via UI
+
+✅ **Chat Session Management**
+
+- Supports creating, switching, and deleting chats
+- Saves chat history persistently using shelve database (`ptt_chat_history_sessions`)
+
+✅ **Feedback File Management**
+
+- Upload multiple Excel files (`.xlsx`, `.xls`)
+- Validate important columns according to `SELECTED_COLUMNS`
+- Process data, split text into chunks, create embeddings, and save vectors to Pinecone
+- Display uploaded files with option to delete files
+
+✅ **AI Chatbot**
+
+- Answers questions about feedback using a Retrieval QA LLM
+- User types questions in chat box, and the system responds with information from uploaded files
 
 ---
 
-## Getting Started
+## 🚀 How to Use
 
-### 1. Clone the Repository
+### 1.) Clone / Install the project
 
-```sh
-git clone https://github.com/sikares/PTT_HR-Chatbot.git
-cd PTT_HR-Chatbot
-```
-
-### 2. Set Up Python Environment
-
-```sh
-python -m venv .venv
-.venv\Scripts\activate   # On Windows
-# Or: source .venv/bin/activate  # On Mac/Linux
-
-pip install --upgrade pip
+```bash
+git clone your-repo-url
+cd your-project-folder
+python -m venv venv
+source venv/bin/activate  # macOS/Linux
+venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-### 3. Configure Environment Variables
+### 2️.) Create `.env` file
 
-Create a `.env` file in the project root (already present in this repo):
+**Use the `test.py` script to generate password hashes, then update the `.env` file like this:**
 
-```
-OPENAI_API_KEY=YOUR_OPENAI_API_KEY
-HR_USERNAME=YOUR_HR_USERNAME
-HR_PASSWORD_HASH=YOUR_BCRYPT_HASHED_PASSWORD <bcrypt hash>
-```
+```env
+OPENAI_API_KEY=your_openai_key
+PINECONE_API_KEY=your_pinecone_key
 
-- To generate a bcrypt hash for a new password, use Python:
-  ```python
-  import bcrypt
-  print(bcrypt.hashpw(b"yourpassword", bcrypt.gensalt()).decode())
-  ```
-
-### 4. Start Qdrant Vector Database
-
-You must have [Docker](https://www.docker.com/products/docker-desktop/) installed.
-
-```sh
-cd qdrant
-docker compose up -d
+HR_USERNAME=HR_Users
+HR_PASSWORD_HASH=<hash from test.py>
+HR_ADMIN_USERNAME=HR_Admin
+HR_ADMIN_PASSWORD_HASH=<hash from test.py>
 ```
 
-This will start Qdrant on `localhost:6333`.
+**Example `test.py` script to generate password hashes**
 
-### 5. Run the Chatbot
+```python
+import bcrypt
 
-Back in the project root:
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
-```sh
-streamlit run app.py
+# Replace these with your desired passwords
+
+admin_password = "your_admin_password"
+admin_hash = hash_password(admin_password)
+
+print("=== Password Hashes ===")
+print(f"HR_Admin Password: {admin_password}")
+print(f"HR_Admin Hash: {admin_hash}")
+print()
+
+hr_user_password = "your_user_password"
+hr_user_hash = hash_password(hr_user_password)
+
+print(f"HR_Users Password: {hr_user_password}")
+print(f"HR_Users Hash: {hr_user_hash}")
+print()
+
+print("=== Updated .env file content ===")
+print(f"HR_USERNAME=your_username_for_users")
+print(f"HR_PASSWORD_HASH={hr_user_hash}")
+print(f"HR_ADMIN_USERNAME=your_username_for_admin")
+print(f"HR_ADMIN_PASSWORD_HASH={admin_hash}")
 ```
 
-The app will open in your browser at `http://localhost:8501`.
+**Run the hash generator:**
+
+`python test.py`
+
+**Important Notes:**
+
+- Replace all placeholder values (your_openai_key, your_pinecone_key, etc.) with your actual values
+- Never commit real passwords to version control - only the hashes
+- Keep your .env file in your .gitignore
+- The example passwords should be changed to strong, unique passwords
+
+### 3️.) Create upload directory
+
+`mkdir -p data/uploads`
+
+### 4️.) Run the app
+
+`streamlit run app.py`
+
+_Open the browser at URL, e.g., http://localhost:8501_
+
+### 5️.) Login
+
+At the first load, system asks for Username and Password:
+
+- HR_Users → Access Chatbot page
+- HR_Admin → Access Admin Panel to manage HR_Users passwords
+
+### 6️.) การใช้งาน Chatbot
+
+Upload Excel files containing columns:
+`ที่มาของ Feedback`, `BU`, `บคญ./บทญ.`, `ประเภท Feedback`, `รายละเอียด Feedback`, `แนวทางการดำเนินการ`, `สถานะการแจ้ง Process Owner`, `Status`, `รายละเอียด Status`
+
+- Click Process Files to process uploaded files
+- Ask questions in chat, e.g.:
+  - “หลักการคัดเข้า และคัดออก DM Pool”
+  - “สามารถลาพักร้อนครึ่งวันได้หรือไม่”
+- The system will search and respond immediately
+
+### 7️.) การจัดการไฟล์
+
+Uploaded files are listed in the Sidebar.
+
+- You can delete files → This removes both the file and its Pinecone vectors
+
+### 8️.) การจัดการแชท
+
+In Sidebar > Chats:
+
+- Create new chat `➕ New Chat`
+- Switch between existing chats
+- Delete chats with confirmation
 
 ---
 
-## Usage
+## 🛡️ Important Considerations When Hiring Contractors
 
-1. **Login** with your HR credentials.
-2. **Upload Excel files** (with required columns) via the sidebar.
-3. **Process files** to clean and embed the data.
-4. **Chat**: Ask questions about the feedback data in Thai or English.
-5. **Manage chats and files**: Switch, delete, or create new chat sessions and manage uploaded files.
+### 1️.) Data Security
+
+Feedback may contain sensitive content (e.g., complaints) → NDA must be signed.
+
+### 2️.) Code Ownership
+
+Contracts must clearly state the source code belongs to the company/organization.
+
+### 3️.) Contractor Expertise
+
+Contractors should have experience in:
+
+- Streamlit
+- Pinecone or other VectorDB
+- OpenAI API
+- Excel file handling
+
+### 4️.) Password Management
+
+- Uses bcrypt hashing → fairly secure
+- Password reset for HR_Users allowed only via HR_Admin
+
+### 5️.) File and Data Management
+
+- Feedback files and upload status stored on server → secure file handling required
+- Backup policies and data retention schedules needed
+
+### 6️.) System Scalability
+
+- Current system suits PoC and small number of users
+- For production and large organizations, architecture adjustments are needed, e.g., switching to a proper database or auth service
+
+### 7️.) Maintenance Readiness
+
+- Contractors should support system after delivery, including updates when Pinecone or OpenAI APIs change
+
+## Project Structure
+
+```
+PTT_HR-Chatbot/
+├── core/                     # Core system components
+│   └── vector_store.py       # Vector storage implementation
+├── data/                     # Data storage
+├── icons/                    # Icon storage
+│   └── ptt.ico               # PTT icon
+├── logic/                    # Business logic
+│   ├── chunking.py           # Document chunking logic
+│   ├── data_processing.py    # Data cleaning and processing
+│   ├── embedding.py          # Embedding implementation
+│   └── qa_chain.py           # QA chain logic
+├── utils/                    # Utility functions
+│   ├── auth.py               # Authentication
+│   └── session.py            # Session and file data management
+├── .env                      # Environment variables file
+├── app.py                    # Main Streamlit application
+├── requirements.txt          # Python dependencies
+└──  README.md                # Project documentation
+```
+
+### 🔗 Notes
+
+This system is a Proof of Concept (PoC) designed to test feasibility.
+It should **NOT** be used directly in production without thorough security and performance testing.
 
 ---
 
-## Excel File Format
+## Support
 
-Your Excel files must contain the following columns:
+For any questions or issues, please contact:
 
-- ที่มาของ Feedback
-- BU
-- บคญ./บทญ.
-- ประเภท Feedback
-- รายละเอียด Feedback
-- แนวทางการดำเนินการ
-- สถานะการแจ้ง Process Owner
-- Status
-- รายละเอียด Status
-
-If any column is missing, the file will be rejected.
-
----
-
-## Security
-
-- **Authentication**: Only users with the correct username and bcrypt-hashed password (from `.env`) can access the app.
-- **Data Privacy**: All uploaded files and vector data are stored locally. No data is sent to external servers except for LLM API calls.
-- **Session Management**: Chat and file management is per user session.
-
----
-
-## Customization
-
-- **Prompt Template**: The prompt for the LLM is in `logic/qa_chain.py` and can be customized for your organization's needs.
-- **Vector DB**: Qdrant settings can be changed in `core/vector_store.py`.
-- **Authentication**: Usernames and password hashes are managed via `.env` and `config.yaml`.
-
----
-
-## Troubleshooting
-
-- **Qdrant not running**: Make sure Docker is running and `docker compose up -d` was successful.
-- **OpenAI API errors**: Check your API key and usage limits.
-- **File processing errors**: Ensure your Excel files have all required columns and are not corrupted.
-- **Port conflicts**: Change the default ports in `docker-compose.yml` or Streamlit config if needed.
-
----
+- _Developer: Sikares Nuntipatsakul_
+- _Email: sikares.n@gmail.com_
 
 ## License
 
-This project is for internal use at PTT. For other use, please contact the authors.
+This project is for internal use at PTT.
 
----
-
-## Acknowledgements
-
-- [LangChain](https://python.langchain.com/)
-- [Qdrant](https://qdrant.tech/)
-- [Streamlit](https://streamlit.io/)
-- [OpenAI](https://openai.com/)
-- [HuggingFace](https://huggingface.co/)
-
----
-
-## Contact
-
-For support or questions, contact the HR
+**_Last Updated: 2025-07-03_**
