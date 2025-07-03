@@ -126,10 +126,10 @@ At the first load, system asks for Username and Password:
 - HR_Users → Access Chatbot page
 - HR_Admin → Access Admin Panel to manage HR_Users passwords
 
-### 6️.) การใช้งาน Chatbot
+### 6️.) Using the Chatbot
 
 Upload Excel files containing columns:
-`ที่มาของ Feedback`, `BU`, `บคญ./บทญ.`, `ประเภท Feedback`, `รายละเอียด Feedback`, `แนวทางการดำเนินการ`, `สถานะการแจ้ง Process Owner`, `Status`, `รายละเอียด Status`
+- `ที่มาของ Feedback`, `BU`, `บคญ./บทญ.`, `ประเภท Feedback`, `รายละเอียด Feedback`,`แนวทางการดำเนินการ`, `สถานะการแจ้ง Process Owner`, `Status`, `รายละเอียด Status`
 
 - Click Process Files to process uploaded files
 - Ask questions in chat, e.g.:
@@ -137,13 +137,13 @@ Upload Excel files containing columns:
   - “สามารถลาพักร้อนครึ่งวันได้หรือไม่”
 - The system will search and respond immediately
 
-### 7️.) การจัดการไฟล์
+### 7️.) File Management
 
 Uploaded files are listed in the Sidebar.
 
 - You can delete files → This removes both the file and its Pinecone vectors
 
-### 8️.) การจัดการแชท
+### 8️.) Chat Management
 
 In Sidebar > Chats:
 
