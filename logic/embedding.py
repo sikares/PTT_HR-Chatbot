@@ -1,8 +1,5 @@
 from langchain_huggingface import HuggingFaceEmbeddings
 
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
-DEFAULT_COLLECTION_NAME = "ptt_hr_feedback"
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 EMBEDDING_MODEL_KWARGS = {"device": "cpu"}
 

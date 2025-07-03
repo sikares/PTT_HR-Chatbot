@@ -17,7 +17,7 @@ from logic.embedding import get_embedding_model
 from logic.qa_chain import get_qa_chain
 from utils.session import init_session_state, update_data_sources, load_data_sources, save_data_sources
 from utils.auth import require_auth, show_logout_button, is_authenticated, show_login_form, is_admin, show_admin_panel
-from core.vector_store import QdrantVectorStore
+from core.vector_store import PineconeVectorStore
 
 USER_AVATAR = "👤"
 BOT_AVATAR = "🤖"
@@ -60,7 +60,7 @@ def get_file_hash(file_content: bytes) -> str:
 
 def initialize_vector_store():
     try:
-        vector_store = QdrantVectorStore()
+        vector_store = PineconeVectorStore()
         st.session_state.vectordb = vector_store
         
         data_sources = load_data_sources()

@@ -2,7 +2,7 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
 from langchain.schema import BaseRetriever, Document
 from langchain_openai import ChatOpenAI
-from core.vector_store import QdrantVectorStore
+from core.vector_store import PineconeVectorStore
 from typing import Optional, List
 from pydantic import BaseModel
 from logic.embedding import get_embedding_model
@@ -150,7 +150,7 @@ Status: ไม่พบข้อมูล Status
 """
 
 class CustomRetriever(BaseRetriever, BaseModel):
-    vector_store: QdrantVectorStore
+    vector_store: PineconeVectorStore
 
     class Config:
         arbitrary_types_allowed = True
@@ -161,50 +161,39 @@ class CustomRetriever(BaseRetriever, BaseModel):
             query_vector=query_embedding,
             top_k=DEFAULT_TOP_K
         )
-
         documents = []
         for result in results:
-            if hasattr(result, 'payload') and isinstance(result.payload, dict):
-                doc = Document(
-                    page_content=result.payload.get('text', ''),
-                    metadata={
-                        'score': getattr(result, 'score', None),
-                        'source': result.payload.get('source', '')
-                    }
-                )
-                documents.append(doc)
+            metadata = result.metadata or {}
+            doc = Document(
+                page_content=metadata.get('text', ''),
+                metadata={
+                    'score': getattr(result, 'score', None),
+                    'source': metadata.get('source', '')
+                }
+            )
+            documents.append(doc)
         return documents
 
     async def aget_relevant_documents(self, query: str) -> List[Document]:
         return await super().aget_relevant_documents(query)
 
-def get_qa_chain(vectordb: QdrantVectorStore, model_name: str = DEFAULT_MODEL_NAME) -> Optional[RetrievalQA]:
+def get_qa_chain(vectordb: PineconeVectorStore, model_name: str = DEFAULT_MODEL_NAME) -> Optional[RetrievalQA]:
     if not vectordb:
         raise ValueError("Vector database is empty or not initialized")
-
-    try:
-        prompt = PromptTemplate(
-            template=TEMPLATE,
-            input_variables=["context", "question"]
-        )
-
-        llm = ChatOpenAI(
-            model=model_name,
-            temperature=DEFAULT_TEMPERATURE
-        )
-
-        retriever = CustomRetriever(vector_store=vectordb)
-
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=retriever,
-            chain_type_kwargs={"prompt": prompt},
-            return_source_documents=True
-        )
-
-        return qa_chain
-
-    except Exception as e:
-        print(f"Error creating QA chain: {e}")
-        return None
+    prompt = PromptTemplate(
+        template=TEMPLATE,
+        input_variables=["context", "question"]
+    )
+    llm = ChatOpenAI(
+        model=model_name,
+        temperature=DEFAULT_TEMPERATURE
+    )
+    retriever = CustomRetriever(vector_store=vectordb)
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=retriever,
+        chain_type_kwargs={"prompt": prompt},
+        return_source_documents=True
+    )
+    return qa_chain
