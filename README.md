@@ -43,8 +43,8 @@ A secure, private, and interactive chatbot system for analyzing and querying emp
 ### 1.) Clone / Install the project
 
 ```bash
-git clone your-repo-url
-cd your-project-folder
+git clone https://github.com/sikares/PTT_HR-Chatbot.git
+cd PTT_HR-Chatbot
 python -m venv venv
 source venv/bin/activate  # macOS/Linux
 venv\Scripts\activate     # Windows
@@ -59,9 +59,9 @@ pip install -r requirements.txt
 OPENAI_API_KEY=your_openai_key
 PINECONE_API_KEY=your_pinecone_key
 
-HR_USERNAME=HR_Users
+HR_USERNAME=<your_username_for_users>
 HR_PASSWORD_HASH=<hash from test.py>
-HR_ADMIN_USERNAME=HR_Admin
+HR_ADMIN_USERNAME=<your_username_for_admin>
 HR_ADMIN_PASSWORD_HASH=<hash from test.py>
 ```
 
@@ -109,9 +109,9 @@ print(f"HR_ADMIN_PASSWORD_HASH={admin_hash}")
 - Keep your .env file in your .gitignore
 - The example passwords should be changed to strong, unique passwords
 
-### 3️.) Create upload directory
+### 3️.) Create data directory
 
-`mkdir -p data/uploads`
+`mkdir -p data`
 
 ### 4️.) Run the app
 
@@ -129,10 +129,11 @@ At the first load, system asks for Username and Password:
 ### 6️.) Using the Chatbot
 
 Upload Excel files containing columns:
-- `ที่มาของ Feedback`, `BU`, `บคญ./บทญ.`, `ประเภท Feedback`, `รายละเอียด Feedback`,`แนวทางการดำเนินการ`, `สถานะการแจ้ง Process Owner`, `Status`, `รายละเอียด Status`
 
+- `ที่มาของ Feedback`, `BU`, `บคญ./บทญ.`, `ประเภท Feedback`, `รายละเอียด Feedback`,`แนวทางการดำเนินการ`, `สถานะการแจ้ง Process Owner`, `Status`, `รายละเอียด Status`
 - Click Process Files to process uploaded files
 - Ask questions in chat, e.g.:
+
   - “หลักการคัดเข้า และคัดออก DM Pool”
   - “สามารถลาพักร้อนครึ่งวันได้หรือไม่”
 - The system will search and respond immediately
@@ -211,7 +212,7 @@ PTT_HR-Chatbot/
 ├── .env                      # Environment variables file
 ├── app.py                    # Main Streamlit application
 ├── requirements.txt          # Python dependencies
-└──  README.md                # Project documentation
+└── README.md                 # Project documentation
 ```
 
 ### 🔗 Notes
@@ -232,4 +233,4 @@ For any questions or issues, please contact:
 
 This project is for internal use at PTT.
 
-**_Last Updated: 2025-07-03_**
+**_Last Updated: 2025-07-04_**
